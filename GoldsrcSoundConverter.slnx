@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GoldsrcSoundConverter.App/GoldsrcSoundConverter.App.csproj" />
+    <Project Path="src/GoldsrcSoundConverter.Core/GoldsrcSoundConverter.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GoldsrcSoundConverter.Tests/GoldsrcSoundConverter.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,277 @@
+﻿<Window x:Class="GoldsrcSoundConverter.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:GoldsrcSoundConverter.App.Controls"
+        Title="GoldSrc Sound Converter — конвертер звуков для CS 1.6"
+        Width="1400"
+        Height="900"
+        MinWidth="1080"
+        MinHeight="680"
+        AllowDrop="True"
+        Background="{StaticResource WindowBgBrush}"
+        Closing="OnWindowClosing"
+        Drop="OnWindowDrop"
+        DragOver="OnWindowDragOver"
+        FontSize="13"
+        Foreground="{StaticResource TextBrush}"
+        WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <ContextMenu x:Key="TextEditContextMenu" x:Shared="False">
+            <MenuItem Command="ApplicationCommands.Undo" Header="Отменить" InputGestureText="Ctrl+Z" />
+            <MenuItem Command="ApplicationCommands.Redo" Header="Повторить" InputGestureText="Ctrl+Y" />
+            <Separator />
+            <MenuItem Command="ApplicationCommands.Cut" Header="Вырезать" InputGestureText="Ctrl+X" />
+            <MenuItem Command="ApplicationCommands.Copy" Header="Копировать" InputGestureText="Ctrl+C" />
+            <MenuItem Command="ApplicationCommands.Paste" Header="Вставить" InputGestureText="Ctrl+V" />
+            <MenuItem Command="ApplicationCommands.Delete" Header="Удалить" InputGestureText="Del" />
+            <Separator />
+            <MenuItem Command="ApplicationCommands.SelectAll" Header="Выделить всё" InputGestureText="Ctrl+A" />
+        </ContextMenu>
+    </Window.Resources>
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="200" />
+            <RowDefinition Height="5" />
+            <RowDefinition Height="300" MinHeight="160" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <WrapPanel Grid.Row="0" Margin="0,0,0,10">
+            <Button Content="Добавить файлы" Command="{Binding AddFilesCommand}" />
+            <Button Content="Добавить папку" Margin="6,0,0,0" Command="{Binding AddFolderCommand}" />
+            <Button Content="Удалить" Margin="6,0,0,0" Command="{Binding RemoveSelectedCommand}" />
+            <Button Content="Очистить" Margin="6,0,0,0" Command="{Binding ClearCommand}" />
+            <Button Content="▶ Начать конвертацию"
+                    Margin="18,0,0,0"
+                    Style="{StaticResource AccentButton}"
+                    Command="{Binding StartCommand}" />
+            <Button Content="Отмена" Margin="6,0,0,0" Command="{Binding CancelCommand}" />
+            <TextBlock Margin="16,0,0,0"
+                       Foreground="{StaticResource TextMutedBrush}"
+                       TextTrimming="CharacterEllipsis"
+                       Text="{Binding FfmpegStatusText}" />
+        </WrapPanel>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="330" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    Background="{StaticResource PanelBgBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+                    <StackPanel>
+                        <TextBlock Text="ВЫХОД" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,8" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <RadioButton Content="WAV" IsChecked="{Binding IsWavFormat}" />
+                            <RadioButton Content="MP3" Margin="16,0,0,0" IsChecked="{Binding IsMp3Format}" />
+                        </StackPanel>
+
+                        <TextBlock Text="Пресет" Foreground="{StaticResource TextMutedBrush}" Margin="0,4,0,4" />
+                        <ComboBox ItemsSource="{Binding Presets}"
+                                  SelectedItem="{Binding SelectedPreset}"
+                                  DisplayMemberPath="Name" />
+
+                        <TextBlock Text="Частота дискретизации" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4" />
+                        <ComboBox ItemsSource="{Binding SampleRates}" SelectedItem="{Binding SampleRate}" />
+
+                        <TextBlock Text="Каналы" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4" />
+                        <ComboBox ItemsSource="{Binding ChannelOptions}"
+                                  SelectedValue="{Binding Channels}"
+                                  SelectedValuePath="Value"
+                                  DisplayMemberPath="Display" />
+
+                        <TextBlock Text="Разрядность (WAV)" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4" />
+                        <ComboBox ItemsSource="{Binding BitDepthOptions}"
+                                  SelectedValue="{Binding BitDepth}"
+                                  SelectedValuePath="Value"
+                                  DisplayMemberPath="Display"
+                                  IsEnabled="{Binding IsWavFormat}" />
+
+                        <TextBlock Text="Битрейт MP3 (CBR)" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4" />
+                        <ComboBox ItemsSource="{Binding Mp3Bitrates}"
+                                  SelectedItem="{Binding Mp3BitrateKbps}"
+                                  IsEnabled="{Binding IsMp3Format}" />
+
+                        <TextBlock Text="ОБРАБОТКА" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,18,0,8" />
+                        <CheckBox Content="Нормализовать пик (−0.3 dBFS)" IsChecked="{Binding NormalizePeak}" />
+                        <CheckBox Content="ASCII-имена файлов" Margin="0,8,0,0" IsChecked="{Binding AsciiNames}" />
+                        <CheckBox Content="Нижний регистр имён" Margin="0,8,0,0" IsChecked="{Binding LowercaseNames}" />
+                        <CheckBox Content="Сохранять структуру папок" Margin="0,8,0,0" IsChecked="{Binding PreserveStructure}" />
+
+                        <TextBlock Text="ВЫВОД" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,18,0,8" />
+                        <TextBlock Text="Папка результатов" Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0"
+                                     ContextMenu="{StaticResource TextEditContextMenu}"
+                                     Text="{Binding OutputDirectory, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button Grid.Column="1" Content="…" Margin="6,0,0,0" Command="{Binding BrowseOutputDirectoryCommand}" />
+                        </Grid>
+
+                        <TextBlock Text="При совпадении имён" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4" />
+                        <ComboBox ItemsSource="{Binding CollisionOptions}"
+                                  SelectedValue="{Binding CollisionPolicy}"
+                                  SelectedValuePath="Value"
+                                  DisplayMemberPath="Display" />
+
+                        <TextBlock Text="Параллельных задач" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4" />
+                        <ComboBox ItemsSource="{Binding ParallelismOptions}" SelectedItem="{Binding Parallelism}" />
+
+                        <TextBlock Text="FFMPEG" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,18,0,8" />
+                        <TextBlock Text="Свой ffmpeg.exe (необязательно)"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,4" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0"
+                                     ContextMenu="{StaticResource TextEditContextMenu}"
+                                     Text="{Binding FfmpegCustomPath, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button Grid.Column="1" Content="…" Margin="6,0,0,0" Command="{Binding BrowseFfmpegCommand}" />
+                        </Grid>
+                        <TextBlock Text="{Binding FfmpegDownloadText}"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,6,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" Background="Transparent" />
+
+            <DataGrid Grid.Column="2"
+                      x:Name="QueueGrid"
+                      ItemsSource="{Binding Items}"
+                      SelectedItem="{Binding SelectedItem}">
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="Файл" Width="2.2*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding FileName}" ToolTip="{Binding SourcePath}" TextTrimming="CharacterEllipsis" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Источник" Width="1.8*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding InfoText}" Foreground="{StaticResource TextMutedBrush}" TextTrimming="CharacterEllipsis" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Длительность" Width="110" Binding="{Binding DurationText}" />
+                    <DataGridTextColumn Header="Обрезка" Width="110" Binding="{Binding TrimText}" />
+                    <DataGridTextColumn Header="Размер" Width="110" Binding="{Binding TargetSizeText}" />
+                    <DataGridTemplateColumn Header="Прогресс" Width="150">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ProgressBar Grid.Column="0" Value="{Binding Progress}" Maximum="1" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Margin="6,0,0,0" FontSize="11" Text="{Binding ProgressText}" />
+                                </Grid>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Статус" Width="180" Binding="{Binding StatusText}" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </Grid>
+
+        <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch" Background="Transparent" />
+
+        <TabControl Grid.Row="3">
+            <TabItem Header="Редактор">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="70" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" LastChildFill="True">
+                        <TextBlock DockPanel.Dock="Right"
+                                   Margin="10,0,0,0"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Text="{Binding PlaybackPositionText}" />
+                        <TextBlock Text="{Binding EditorTitle}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+
+                    <controls:WaveformControl Grid.Row="1"
+                                              Margin="0,8,0,8"
+                                              DurationSeconds="{Binding SelectedItem.DurationSeconds}"
+                                              PositionSeconds="{Binding PlaybackPositionSeconds}"
+                                              SelectionEndSeconds="{Binding SelectedItem.TrimEndSeconds, Mode=TwoWay}"
+                                              SelectionStartSeconds="{Binding SelectedItem.TrimStartSeconds, Mode=TwoWay}"
+                                              Waveform="{Binding SelectedItem.Waveform}" />
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal">
+                        <Button Content="▶ Играть" IsEnabled="{Binding HasSelection}" Command="{Binding PlayCommand}" />
+                        <Button Content="⏸ Пауза" Margin="6,0,0,0" IsEnabled="{Binding HasSelection}" Command="{Binding PauseCommand}" />
+                        <Button Content="■ Стоп" Margin="6,0,0,0" IsEnabled="{Binding HasSelection}" Command="{Binding StopCommand}" />
+                        <Button Content="▶ Играть выделенное" Margin="14,0,0,0" IsEnabled="{Binding HasSelection}" Command="{Binding PlaySelectionCommand}" />
+                        <Button Content="▶ Результат" Margin="6,0,0,0" IsEnabled="{Binding HasSelection}" Command="{Binding PreviewResultCommand}" />
+                        <Button Content="Начало ← позиция" Margin="14,0,0,0" IsEnabled="{Binding HasSelection}" Command="{Binding SetTrimStartCommand}" />
+                        <Button Content="Конец ← позиция" Margin="6,0,0,0" IsEnabled="{Binding HasSelection}" Command="{Binding SetTrimEndCommand}" />
+                        <Button Content="Сбросить обрезку" Margin="6,0,0,0" IsEnabled="{Binding HasSelection}" Command="{Binding ResetTrimCommand}" />
+                        <Slider Width="120"
+                                Margin="16,0,0,0"
+                                VerticalAlignment="Center"
+                                Maximum="1"
+                                Minimum="0"
+                                Value="{Binding PlaybackVolume}" />
+                        <TextBlock Margin="6,0,0,0" Foreground="{StaticResource TextMutedBrush}" Text="громкость" />
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+            <TabItem Header="Журнал">
+                <ListBox x:Name="LogList"
+                         Margin="6"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         Foreground="{StaticResource TextMutedBrush}"
+                         FontFamily="Consolas"
+                         FontSize="12"
+                         ItemsSource="{Binding LogEntries}" />
+            </TabItem>
+        </TabControl>
+
+        <Grid Grid.Row="4" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="260" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <ProgressBar Grid.Column="0" Value="{Binding OverallProgress}" Maximum="1" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1"
+                       Margin="12,0,0,0"
+                       TextTrimming="CharacterEllipsis"
+                       Text="{Binding StatusText}" />
+            <Button Grid.Column="2"
+                    Content="Открыть папку"
+                    Margin="6,0,0,0"
+                    Command="{Binding OpenOutputFolderCommand}" />
+            <Button Grid.Column="3"
+                    Content="Сохранить настройки"
+                    Margin="6,0,0,0"
+                    Command="{Binding SaveSettingsCommand}" />
+        </Grid>
+    </Grid>
+</Window>
