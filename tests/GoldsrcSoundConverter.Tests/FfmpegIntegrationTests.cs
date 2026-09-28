@@ -7,6 +7,7 @@ using GoldsrcSoundConverter.Core.Models;
 
 namespace GoldsrcSoundConverter.Tests;
 
+[Trait("Category", "Integration")]
 public sealed class FfmpegIntegrationTests : IDisposable
 {
   private readonly TempDirectory _temp = new();
@@ -225,6 +226,37 @@ public sealed class FfmpegIntegrationTests : IDisposable
     Assert.InRange(waveform.Duration.TotalSeconds, 0.9, 1.1);
     Assert.True(waveform.Maxs.Max() > 0.05f);
     Assert.True(waveform.Mins.Min() < -0.05f);
+  }
+
+  [Fact]
+  public async Task CancelsRunningConversion()
+  {
+    if (!IsAvailable())
+    {
+      return;
+    }
+
+    var source = await GenerateSineAsync("cancel", 60.0);
+    var options = new ConversionOptions
+    {
+      Format = OutputAudioFormat.Wav,
+      SampleRate = 44100,
+      Channels = TargetChannels.Stereo,
+      OutputDirectory = _temp.Path,
+      AsciiNames = true,
+      LowercaseNames = true,
+    };
+
+    var job = new ConversionPlanner().Plan(
+      new[] { new ConversionJob(Guid.NewGuid(), source, null, null, null) },
+      options)[0];
+
+    using var cts = new CancellationTokenSource();
+    cts.CancelAfter(TimeSpan.FromMilliseconds(150));
+
+    await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+      new AudioConverter(_runner, _ffmpeg!, _ffprobe!)
+        .ConvertAsync(job, options, null, cancellationToken: cts.Token));
   }
 
   private bool IsAvailable()
