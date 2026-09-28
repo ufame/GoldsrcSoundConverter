@@ -20,6 +20,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private readonly IConversionService _conversionService;
   private readonly IPlaybackController _playback;
   private readonly IQueueManager _queue;
+  private readonly IConversionRequestFactory _requestFactory;
+  private readonly IPresetCatalog _presetCatalog;
   private readonly ILogBuffer _log;
 
   private CancellationTokenSource? _conversionCts;
@@ -32,6 +34,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     IConversionService conversionService,
     IPlaybackController playback,
     IQueueManager queue,
+    IConversionRequestFactory requestFactory,
+    IPresetCatalog presetCatalog,
     ILogBuffer log)
   {
     _settingsStore = settingsStore;
@@ -40,6 +44,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     _conversionService = conversionService;
     _playback = playback;
     _queue = queue;
+    _requestFactory = requestFactory;
+    _presetCatalog = presetCatalog;
     _log = log;
     Items.CollectionChanged += (_, _) => StartCommand.NotifyCanExecuteChanged();
     _playback.PositionChanged += OnPlaybackPositionChanged;
@@ -309,21 +315,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
       StatusText = "Подготовка FFmpeg…";
 
-      var workItems = new List<ConversionWorkItem>(Items.Count);
       foreach (var item in Items)
       {
         item.Progress = 0;
         item.Error = null;
         item.OutputPath = null;
         item.Stage = ConversionStage.Pending;
-        workItems.Add(new ConversionWorkItem(
-          item.Id,
-          item.SourcePath,
-          item.SourceRoot,
-          item.HasTrim ? TimeSpan.FromSeconds(item.TrimStartSeconds) : null,
-          item.HasTrim ? TimeSpan.FromSeconds(item.TrimEndSeconds) : null,
-          item.Info));
       }
+
+      var workItems = _requestFactory.CreateWorkItems(Items);
 
       if (SelectedItem is not null)
       {
@@ -475,24 +475,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
       StatusText = "Рендер результата…";
 
-      var options = BuildOptions() with
-      {
-        OutputDirectory = Path.Combine(
-          Path.GetTempPath(), "GoldsrcSoundConverter", "preview", "result"),
-        AsciiNames = false,
-        LowercaseNames = false,
-        CollisionPolicy = CollisionPolicy.Overwrite,
-        Parallelism = 1,
-      };
+      var previewDirectory = Path.Combine(
+        Path.GetTempPath(), "GoldsrcSoundConverter", "preview", "result");
+      var options = _requestFactory.CreatePreviewOptions(SnapshotSettings(), previewDirectory);
       Directory.CreateDirectory(options.OutputDirectory);
 
-      var workItem = new ConversionWorkItem(
-        Guid.NewGuid(),
-        item.SourcePath,
-        null,
-        item.HasTrim ? TimeSpan.FromSeconds(item.TrimStartSeconds) : null,
-        item.HasTrim ? TimeSpan.FromSeconds(item.TrimEndSeconds) : null,
-        item.Info);
+      var workItem = _requestFactory.CreateWorkItem(item);
 
       await _playback
         .PrepareResultAsync(workItem, options, new Progress<BootstrapProgress>(ApplyBootstrapProgress), AppendLog)
@@ -699,21 +687,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   private ConversionOptions BuildOptions()
   {
-    return new ConversionOptions
-    {
-      Format = Format,
-      SampleRate = SampleRate,
-      Channels = Channels,
-      BitDepth = BitDepth,
-      Mp3BitrateKbps = Mp3BitrateKbps,
-      NormalizePeak = NormalizePeak,
-      OutputDirectory = OutputDirectory,
-      AsciiNames = AsciiNames,
-      LowercaseNames = LowercaseNames,
-      PreserveStructure = PreserveStructure,
-      CollisionPolicy = CollisionPolicy,
-      Parallelism = Parallelism,
-    };
+    return _requestFactory.CreateOptions(SnapshotSettings());
+  }
+
+  private ConversionSettings SnapshotSettings()
+  {
+    return new ConversionSettings(
+      Format,
+      SampleRate,
+      Channels,
+      BitDepth,
+      Mp3BitrateKbps,
+      NormalizePeak,
+      AsciiNames,
+      LowercaseNames,
+      PreserveStructure,
+      CollisionPolicy,
+      Parallelism,
+      OutputDirectory);
   }
 
   private void SetFormat(OutputAudioFormat format)
@@ -734,20 +725,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
   {
     _applyingPreset = true;
     Presets.Clear();
-    foreach (var preset in Cs16Presets.ForFormat(Format))
+    foreach (var preset in _presetCatalog.ForFormat(Format))
     {
       Presets.Add(preset);
     }
 
-    SelectedPreset = Cs16Presets.Match(BuildOptions()) ?? Cs16Presets.ById(Cs16Presets.CustomId);
+    SelectedPreset = _presetCatalog.Resolve(BuildOptions());
     _applyingPreset = false;
   }
 
   private void EnsureCustomPreset()
   {
-    var match = Cs16Presets.Match(BuildOptions());
     _applyingPreset = true;
-    SelectedPreset = match ?? Cs16Presets.ById(Cs16Presets.CustomId);
+    SelectedPreset = _presetCatalog.Resolve(BuildOptions());
     _applyingPreset = false;
   }
 

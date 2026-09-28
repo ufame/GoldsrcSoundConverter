@@ -316,6 +316,8 @@ public sealed class MainViewModelTests : IDisposable
       _conversion,
       _playback,
       new QueueManager(_conversion, _log),
+      new ConversionRequestFactory(),
+      new PresetCatalog(),
       _log);
   }
 
