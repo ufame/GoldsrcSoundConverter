@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using GoldsrcSoundConverter.Core.Audio;
@@ -71,7 +72,9 @@ public partial class QueueItemViewModel : ObservableObject
     ? $"{TimeText.Format(TrimStartSeconds)}–{TimeText.Format(TrimEndSeconds)}"
     : "—";
 
-  public string ProgressText => Stage == ConversionStage.Converting ? Progress.ToString("P0") : string.Empty;
+  public string ProgressText => Stage == ConversionStage.Converting
+    ? Progress.ToString("P0", CultureInfo.InvariantCulture)
+    : string.Empty;
 
   public string StatusText => Stage switch
   {
@@ -105,8 +108,8 @@ public partial class QueueItemViewModel : ObservableObject
   {
     const double megabyte = 1024 * 1024;
     return bytes >= megabyte
-      ? (bytes / megabyte).ToString("0.0") + " МБ"
-      : (bytes / 1024).ToString("0") + " КБ";
+      ? (bytes / megabyte).ToString("0.0", CultureInfo.InvariantCulture) + " МБ"
+      : (bytes / 1024).ToString("0", CultureInfo.InvariantCulture) + " КБ";
   }
 
   partial void OnInfoChanged(AudioInfo? value)

@@ -8,6 +8,9 @@ namespace GoldsrcSoundConverter.Tests;
 
 public sealed class MainViewModelTests : IDisposable
 {
+  private static readonly float[] WaveformMins = { -0.5f };
+  private static readonly float[] WaveformMaxs = { 0.5f };
+
   private readonly TempDirectory _temp = new();
   private readonly FakeSettingsStore _settings = new();
   private readonly FakeFilePicker _filePicker = new();
@@ -291,7 +294,7 @@ public sealed class MainViewModelTests : IDisposable
   [Fact]
   public async Task SelectingItemLoadsWaveformFromService()
   {
-    _conversion.Waveform = new WaveformData(new[] { -0.5f }, new[] { 0.5f }, 64, 8000);
+    _conversion.Waveform = new WaveformData(WaveformMins, WaveformMaxs, 64, 8000);
     var vm = CreateViewModel();
     vm.AddPaths(new[] { CreateFile("sound.wav") });
 

@@ -6,7 +6,7 @@ using GoldsrcSoundConverter.Core.Models;
 
 namespace GoldsrcSoundConverter.App.Services;
 
-public sealed class ConversionService : IConversionService
+public sealed class ConversionService : IConversionService, IDisposable
 {
   private const int ProbeParallelism = 3;
 
@@ -197,6 +197,13 @@ public sealed class ConversionService : IConversionService
       .ConfigureAwait(false);
 
     return new ConversionBatchResult(outcomes, ffmpeg, ffprobe);
+  }
+
+  public void Dispose()
+  {
+    _ffmpegLock.Dispose();
+    _probeGate.Dispose();
+    GC.SuppressFinalize(this);
   }
 
   private static Action<string>? MarshalLog(Action<string>? log)

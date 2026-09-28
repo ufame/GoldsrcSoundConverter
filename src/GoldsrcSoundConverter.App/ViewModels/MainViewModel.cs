@@ -203,6 +203,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
   public void Dispose()
   {
     _conversionCts?.Dispose();
+    GC.SuppressFinalize(this);
   }
 
   public void AddPaths(IEnumerable<string> paths)

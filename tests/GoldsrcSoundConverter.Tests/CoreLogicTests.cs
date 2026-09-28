@@ -110,12 +110,17 @@ public sealed class Cs16PresetsTests
 
 public sealed class WaveformDataTests
 {
+  private static readonly float[] Mins = { -1f, -0.5f, -0.2f, -0.1f };
+  private static readonly float[] Maxs = { 0.1f, 0.4f, 0.8f, 1f };
+  private static readonly float[] SingleMin = { -0.5f };
+  private static readonly float[] SingleMax = { 0.5f };
+
   [Fact]
   public void AggregateReturnsBucketRange()
   {
     var data = new WaveformData(
-      new[] { -1f, -0.5f, -0.2f, -0.1f },
-      new[] { 0.1f, 0.4f, 0.8f, 1f },
+      Mins,
+      Maxs,
       samplesPerBucket: 64,
       sourceSampleRate: 8000);
 
@@ -128,7 +133,7 @@ public sealed class WaveformDataTests
   [Fact]
   public void AggregateClampsOutOfRange()
   {
-    var data = new WaveformData(new[] { -0.5f }, new[] { 0.5f }, 64, 8000);
+    var data = new WaveformData(SingleMin, SingleMax, 64, 8000);
 
     var (min, max) = data.Aggregate(-10, 100);
 

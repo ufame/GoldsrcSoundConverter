@@ -110,6 +110,9 @@ dotnet test --filter "Category=Integration"    # интеграционные т
 Интеграционные тесты ищут FFmpeg в переменной `GSC_FFMPEG`, затем в
 `%LocalAppData%\GoldsrcSoundConverter\ffmpeg`, затем в `PATH`.
 
+В проекте включён `AnalysisLevel=latest-recommended`; сборка должна проходить
+без предупреждений (CA1716 подавлен: имена вида `Stop` заданы контрактами).
+
 ## Политика FFmpeg
 
 Версия FFmpeg зафиксирована константами в `FfmpegBootstrapper`
