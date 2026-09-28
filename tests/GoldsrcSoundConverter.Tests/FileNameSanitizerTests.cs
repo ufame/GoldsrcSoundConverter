@@ -25,9 +25,57 @@ public sealed class FileNameSanitizerTests
   }
 
   [Fact]
-  public void RemovesCyrillicWhenTransliterationDisabled()
+  public void KeepsCyrillicWhenTransliterationDisabled()
   {
-    Assert.Equal("1", FileNameSanitizer.Sanitize("трек 1", toAscii: false, lowercase: true));
+    Assert.Equal("трек_1", FileNameSanitizer.Sanitize("трек 1", toAscii: false, lowercase: false));
+  }
+
+  [Theory]
+  [InlineData("Привет", "Привет")]
+  [InlineData("Українська", "Українська")]
+  [InlineData("中文", "中文")]
+  [InlineData("日本語", "日本語")]
+  public void KeepsUnicodeWhenTransliterationDisabled(string input, string expected)
+  {
+    Assert.Equal(expected, FileNameSanitizer.Sanitize(input, toAscii: false, lowercase: false));
+  }
+
+  [Theory]
+  [InlineData("CON", "_CON")]
+  [InlineData("con", "_con")]
+  [InlineData("CON.wav", "_CON.wav")]
+  [InlineData("PRN", "_PRN")]
+  [InlineData("AUX", "_AUX")]
+  [InlineData("NUL", "_NUL")]
+  [InlineData("COM1", "_COM1")]
+  [InlineData("com9", "_com9")]
+  [InlineData("LPT1", "_LPT1")]
+  [InlineData("lpt9", "_lpt9")]
+  public void AvoidsReservedWindowsNames(string input, string expected)
+  {
+    var result = FileNameSanitizer.Sanitize(input, toAscii: true, lowercase: false);
+
+    Assert.Equal(expected, result);
+    Assert.DoesNotContain(result, Path.GetInvalidFileNameChars());
+  }
+
+  [Theory]
+  [InlineData("my.CON")]
+  [InlineData("sound")]
+  [InlineData("connection")]
+  public void KeepsRegularNamesThatContainReservedLookingWords(string input)
+  {
+    Assert.Equal(input, FileNameSanitizer.Sanitize(input, toAscii: true, lowercase: false));
+  }
+
+  [Theory]
+  [InlineData(".")]
+  [InlineData("..")]
+  [InlineData("...")]
+  [InlineData("....")]
+  public void DotsOnlyBecomePlaceholder(string input)
+  {
+    Assert.Equal("sound", FileNameSanitizer.Sanitize(input, toAscii: true, lowercase: false));
   }
 
   [Fact]
@@ -36,6 +84,40 @@ public sealed class FileNameSanitizerTests
     var invalid = Path.GetInvalidFileNameChars().First();
     var result = FileNameSanitizer.Sanitize($"a{invalid}b", toAscii: true, lowercase: false);
     Assert.DoesNotContain(invalid, result);
+  }
+
+  [Theory]
+  [InlineData(":", "a_b")]
+  [InlineData("*", "a_b")]
+  [InlineData("?", "a_b")]
+  [InlineData("\"", "a_b")]
+  [InlineData("<", "a_b")]
+  [InlineData(">", "a_b")]
+  [InlineData("|", "a_b")]
+  [InlineData("/", "a_b")]
+  [InlineData("\\", "a_b")]
+  public void ReplacesKnownInvalidCharacters(string invalidChar, string expected)
+  {
+    Assert.Equal(expected, FileNameSanitizer.Sanitize($"a{invalidChar}b", toAscii: true, lowercase: false));
+  }
+
+  [Fact]
+  public void NeverProducesInvalidWindowsNameForUnicodeInput()
+  {
+    var invalid = Path.GetInvalidFileNameChars();
+    var inputs = new[] { "中文", "日本語", "😀", "Привет", "Українська", "a:b*c?d\"e<f>g|h/i\\j", new string('x', 300) };
+
+    foreach (var input in inputs)
+    {
+      foreach (var toAscii in new[] { true, false })
+      {
+        var result = FileNameSanitizer.Sanitize(input, toAscii, lowercase: false);
+        Assert.False(string.IsNullOrWhiteSpace(result));
+        Assert.DoesNotContain(result, invalid);
+        Assert.False(result.EndsWith('.'), $"«{result}» заканчивается точкой");
+        Assert.False(result.EndsWith(' '), $"«{result}» заканчивается пробелом");
+      }
+    }
   }
 
   [Fact]
