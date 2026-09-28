@@ -12,11 +12,12 @@ public partial class MainWindow : Window
   private const int DwmwaUseImmersiveDarkMode = 20;
   private const int DwmwaUseImmersiveDarkModeBefore20H1 = 19;
 
-  private readonly MainViewModel _viewModel = new();
+  private readonly MainViewModel _viewModel;
 
-  public MainWindow()
+  public MainWindow(MainViewModel viewModel)
   {
     InitializeComponent();
+    _viewModel = viewModel;
     DataContext = _viewModel;
     Width = _viewModel.InitialWindowWidth;
     Height = _viewModel.InitialWindowHeight;
@@ -42,7 +43,7 @@ public partial class MainWindow : Window
       var enabled = 1;
       if (DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkMode, ref enabled, sizeof(int)) != 0)
       {
-        DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkModeBefore20H1, ref enabled, sizeof(int));
+        _ = DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkModeBefore20H1, ref enabled, sizeof(int));
       }
     }
     catch (DllNotFoundException)

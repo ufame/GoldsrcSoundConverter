@@ -6,4 +6,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Ffmpeg\ffmpeg.manifest.json">
+      <LogicalName>GoldsrcSoundConverter.FfmpegManifest.json</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

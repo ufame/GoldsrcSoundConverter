@@ -1,8 +1,9 @@
+using GoldsrcSoundConverter.Core.Audio;
 using NAudio.Wave;
 
-namespace GoldsrcSoundConverter.App.Services;
+namespace GoldsrcSoundConverter.App.Infrastructure.Audio;
 
-public sealed class AudioPreviewService : IDisposable
+public sealed class AudioPreviewService : IAudioPreview
 {
   private WaveOut? _output;
   private AudioFileReader? _reader;

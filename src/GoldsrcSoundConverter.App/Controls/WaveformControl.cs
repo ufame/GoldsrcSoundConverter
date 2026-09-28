@@ -327,7 +327,7 @@ public sealed class WaveformControl : FrameworkElement
     return duration <= 0 ? 0 : seconds / duration * ActualWidth;
   }
 
-  private static Brush CreateFrozen(Color color)
+  private static SolidColorBrush CreateFrozen(Color color)
   {
     var brush = new SolidColorBrush(color);
     brush.Freeze();

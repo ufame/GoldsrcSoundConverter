@@ -8,19 +8,14 @@ public sealed record BootstrapProgress(string Stage, double? Percent);
 
 public sealed class FfmpegBootstrapper
 {
-  private static readonly (string Name, string Url, string? Sha256Url)[] Sources =
-  {
-    (
-      "gyan.dev (essentials)",
-      "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
-      "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip.sha256"),
-    (
-      "BtbN (LGPL)",
-      "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip",
-      null),
-  };
-
+  private static readonly FfmpegManifest Manifest = FfmpegManifestLoader.Load();
   private static readonly HttpClient Http = CreateHttpClient();
+
+  public static string Version => Manifest.Version;
+
+  public static string DownloadUrl => Manifest.Url;
+
+  public static string ArchiveSha256 => Manifest.Sha256;
 
   public FfmpegBootstrapper(string? installDirectory = null)
   {
@@ -47,8 +42,18 @@ public sealed class FfmpegBootstrapper
 
   public static bool TryResolveCustom(string? customPath, out string ffmpegPath, out string ffprobePath)
   {
+    return TryResolveCustom(customPath, out ffmpegPath, out ffprobePath, out _);
+  }
+
+  public static bool TryResolveCustom(
+    string? customPath,
+    out string ffmpegPath,
+    out string ffprobePath,
+    out string? error)
+  {
     ffmpegPath = string.Empty;
     ffprobePath = string.Empty;
+    error = null;
 
     if (string.IsNullOrWhiteSpace(customPath))
     {
@@ -67,9 +72,11 @@ public sealed class FfmpegBootstrapper
 
     if (directory is null)
     {
+      error = $"Указанный путь к FFmpeg не найден: {customPath}";
       return false;
     }
 
+    string? missingFfprobe = null;
     foreach (var candidate in new[] { directory, Path.Combine(directory, "bin") })
     {
       var ffmpeg = Path.Combine(candidate, "ffmpeg.exe");
@@ -79,11 +86,18 @@ public sealed class FfmpegBootstrapper
       }
 
       var ffprobe = Path.Combine(candidate, "ffprobe.exe");
+      if (!File.Exists(ffprobe))
+      {
+        missingFfprobe ??= $"Рядом с ffmpeg.exe не найден ffprobe.exe: {candidate}";
+        continue;
+      }
+
       ffmpegPath = ffmpeg;
-      ffprobePath = File.Exists(ffprobe) ? ffprobe : ffmpeg;
+      ffprobePath = ffprobe;
       return true;
     }
 
+    error = missingFfprobe ?? $"В указанной папке не найден ffmpeg.exe: {directory}";
     return false;
   }
 
@@ -93,9 +107,14 @@ public sealed class FfmpegBootstrapper
     Action<string>? log,
     CancellationToken cancellationToken = default)
   {
-    if (TryResolveCustom(customPath, out var customFfmpeg, out var customFfprobe))
+    if (TryResolveCustom(customPath, out var customFfmpeg, out var customFfprobe, out var customError))
     {
       return (customFfmpeg, customFfprobe);
+    }
+
+    if (customError is not null)
+    {
+      throw new InvalidOperationException(customError);
     }
 
     if (TryResolve(out var installedFfmpeg, out var installedFfprobe))
@@ -106,51 +125,37 @@ public sealed class FfmpegBootstrapper
     Directory.CreateDirectory(InstallDirectory);
     var archivePath = Path.Combine(Path.GetTempPath(), $"gsc-ffmpeg-{Guid.NewGuid():N}.zip");
 
-    Exception? lastError = null;
-    foreach (var source in Sources)
+    try
     {
-      cancellationToken.ThrowIfCancellationRequested();
-      try
-      {
-        log?.Invoke($"Загрузка FFmpeg ({source.Name})...");
-        await DownloadAsync(source.Url, archivePath, progress, cancellationToken).ConfigureAwait(false);
+      log?.Invoke($"Загрузка FFmpeg {Version}...");
+      await DownloadAsync(DownloadUrl, archivePath, progress, cancellationToken).ConfigureAwait(false);
 
-        if (source.Sha256Url is not null)
-        {
-          progress?.Report(new BootstrapProgress("Проверка контрольной суммы", null));
-          await VerifySha256Async(archivePath, source.Sha256Url, cancellationToken).ConfigureAwait(false);
-        }
+      progress?.Report(new BootstrapProgress("Проверка контрольной суммы", null));
+      await VerifySha256Async(archivePath, cancellationToken).ConfigureAwait(false);
 
-        progress?.Report(new BootstrapProgress("Распаковка FFmpeg", null));
-        ExtractBinaries(archivePath, InstallDirectory);
+      progress?.Report(new BootstrapProgress("Распаковка FFmpeg", null));
+      ExtractBinaries(archivePath, InstallDirectory);
 
-        if (TryResolve(out var ffmpeg, out var ffprobe))
-        {
-          progress?.Report(new BootstrapProgress("FFmpeg готов", 1));
-          log?.Invoke($"FFmpeg установлен: {ffmpeg}");
-          return (ffmpeg, ffprobe);
-        }
+      if (TryResolve(out var ffmpeg, out var ffprobe))
+      {
+        progress?.Report(new BootstrapProgress("FFmpeg готов", 1));
+        log?.Invoke($"FFmpeg {Version} установлен: {ffmpeg}");
+        return (ffmpeg, ffprobe);
+      }
 
-        throw new InvalidOperationException("В архиве не найдены ffmpeg.exe/ffprobe.exe.");
-      }
-      catch (OperationCanceledException)
-      {
-        throw;
-      }
-      catch (Exception ex)
-      {
-        lastError = ex;
-        log?.Invoke($"Не удалось установить FFmpeg из {source.Name}: {ex.Message}");
-      }
-      finally
-      {
-        TryDelete(archivePath);
-      }
+      throw new InvalidOperationException("В архиве не найдены ffmpeg.exe/ffprobe.exe.");
     }
-
-    throw new InvalidOperationException(
-      "Не удалось автоматически загрузить FFmpeg. Укажите папку с ffmpeg.exe вручную в настройках.",
-      lastError);
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+      throw new InvalidOperationException(
+        $"Не удалось установить FFmpeg {Version}: {ex.Message} "
+        + "Укажите папку с ffmpeg.exe вручную в настройках.",
+        ex);
+    }
+    finally
+    {
+      TryDelete(archivePath);
+    }
   }
 
   private static async Task DownloadAsync(
@@ -190,27 +195,18 @@ public sealed class FfmpegBootstrapper
     }
   }
 
-  private static async Task VerifySha256Async(string filePath, string sha256Url, CancellationToken cancellationToken)
+  private static async Task VerifySha256Async(string filePath, CancellationToken cancellationToken)
   {
-    var text = await Http.GetStringAsync(sha256Url, cancellationToken).ConfigureAwait(false);
-    var expected = text
-      .Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-      .FirstOrDefault();
-
-    if (expected is null || expected.Length != 64)
-    {
-      throw new InvalidOperationException("Не удалось прочитать контрольную сумму FFmpeg.");
-    }
-
     var actual = await Task.Run(() =>
     {
       using var stream = File.OpenRead(filePath);
       return Convert.ToHexString(SHA256.HashData(stream));
     }, cancellationToken).ConfigureAwait(false);
 
-    if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+    if (!string.Equals(actual, ArchiveSha256, StringComparison.OrdinalIgnoreCase))
     {
-      throw new InvalidOperationException("Контрольная сумма архива FFmpeg не совпала.");
+      throw new InvalidOperationException(
+        $"Контрольная сумма архива FFmpeg не совпала: ожидалась {ArchiveSha256}, получена {actual}.");
     }
   }
 

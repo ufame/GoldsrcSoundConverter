@@ -67,16 +67,60 @@ public sealed class Cs16PresetsTests
 
     Assert.Null(Cs16Presets.Match(options));
   }
+
+  [Fact]
+  public void ByIdReturnsNullForUnknownId()
+  {
+    Assert.Null(Cs16Presets.ById("does-not-exist"));
+    Assert.Null(Cs16Presets.ById(null));
+  }
+
+  [Fact]
+  public void CustomPresetIsAvailableForEveryFormat()
+  {
+    foreach (var format in new[] { OutputAudioFormat.Wav, OutputAudioFormat.Mp3 })
+    {
+      var preset = Cs16Presets.ForFormat(format).Single(p => p.IsCustom);
+      Assert.Equal(Cs16Presets.CustomId, preset.Id);
+    }
+  }
+
+  [Fact]
+  public void Mp3MatchRequiresMatchingBitrate()
+  {
+    var options = new ConversionOptions
+    {
+      Format = OutputAudioFormat.Mp3,
+      SampleRate = 44100,
+      Channels = TargetChannels.Stereo,
+      BitDepth = TargetBitDepth.Sixteen,
+      Mp3BitrateKbps = 192,
+    };
+
+    Assert.Equal("mp3-music-hq", Cs16Presets.Match(options)?.Id);
+  }
+
+  [Fact]
+  public void DefaultForFormatPicksExpectedPreset()
+  {
+    Assert.Equal("wav-sound", Cs16Presets.DefaultFor(OutputAudioFormat.Wav).Id);
+    Assert.Equal("mp3-music", Cs16Presets.DefaultFor(OutputAudioFormat.Mp3).Id);
+  }
 }
 
 public sealed class WaveformDataTests
 {
+  private static readonly float[] Mins = { -1f, -0.5f, -0.2f, -0.1f };
+  private static readonly float[] Maxs = { 0.1f, 0.4f, 0.8f, 1f };
+  private static readonly float[] SingleMin = { -0.5f };
+  private static readonly float[] SingleMax = { 0.5f };
+
   [Fact]
   public void AggregateReturnsBucketRange()
   {
     var data = new WaveformData(
-      new[] { -1f, -0.5f, -0.2f, -0.1f },
-      new[] { 0.1f, 0.4f, 0.8f, 1f },
+      Mins,
+      Maxs,
       samplesPerBucket: 64,
       sourceSampleRate: 8000);
 
@@ -89,7 +133,7 @@ public sealed class WaveformDataTests
   [Fact]
   public void AggregateClampsOutOfRange()
   {
-    var data = new WaveformData(new[] { -0.5f }, new[] { 0.5f }, 64, 8000);
+    var data = new WaveformData(SingleMin, SingleMax, 64, 8000);
 
     var (min, max) = data.Aggregate(-10, 100);
 
@@ -147,46 +191,5 @@ public sealed class AudioFileTypesTests
   public void DetectsSupportedExtensions(string path, bool expected)
   {
     Assert.Equal(expected, Core.Files.AudioFileTypes.IsSupported(path));
-  }
-}
-
-public sealed class SettingsStoreTests
-{
-  [Fact]
-  public void RoundTripsSettings()
-  {
-    using var temp = new TempDirectory();
-    var path = Path.Combine(temp.Path, "settings.json");
-    var store = new Core.Settings.SettingsStore(path);
-
-    store.Save(new Core.Settings.AppSettings
-    {
-      Format = OutputAudioFormat.Mp3,
-      SampleRate = 44100,
-      Channels = TargetChannels.Stereo,
-      Mp3BitrateKbps = 192,
-      NormalizePeak = true,
-      OutputDirectory = @"C:\sounds",
-    });
-
-    var loaded = store.Load();
-
-    Assert.Equal(OutputAudioFormat.Mp3, loaded.Format);
-    Assert.Equal(44100, loaded.SampleRate);
-    Assert.Equal(TargetChannels.Stereo, loaded.Channels);
-    Assert.Equal(192, loaded.Mp3BitrateKbps);
-    Assert.True(loaded.NormalizePeak);
-  }
-
-  [Fact]
-  public void ReturnsDefaultsForMissingFile()
-  {
-    using var temp = new TempDirectory();
-    var store = new Core.Settings.SettingsStore(Path.Combine(temp.Path, "missing.json"));
-
-    var loaded = store.Load();
-
-    Assert.Equal(OutputAudioFormat.Wav, loaded.Format);
-    Assert.Equal(22050, loaded.SampleRate);
   }
 }

@@ -146,6 +146,7 @@ public static class FfmpegArguments
       "-ar", sampleRate.ToString(CultureInfo.InvariantCulture),
       "-ac", channels.ToString(CultureInfo.InvariantCulture),
       "-c:a", "pcm_s16le",
+      "-f", "wav",
       "-map_metadata", "-1",
       outputPath,
     };

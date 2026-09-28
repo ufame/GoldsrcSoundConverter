@@ -12,22 +12,40 @@ public enum ConversionStage
 }
 
 public sealed record ConversionJob(
-  int Index,
+  Guid Id,
   string SourcePath,
   string? SourceRoot,
   TimeSpan? TrimStart,
-  TimeSpan? TrimEnd);
+  TimeSpan? TrimEnd)
+{
+  public string? OutputPath { get; init; }
+}
 
 public sealed record ConversionProgress(
-  int Index,
+  Guid JobId,
   ConversionStage Stage,
   double Percent,
   TimeSpan? Eta);
 
 public sealed record ConversionOutcome(
-  int Index,
+  Guid JobId,
   bool Success,
   bool Skipped,
   string? OutputPath,
   string? Error,
   AudioInfo? OutputInfo);
+
+public sealed record ConversionWorkItem(
+  Guid Id,
+  string SourcePath,
+  string? SourceRoot,
+  TimeSpan? TrimStart,
+  TimeSpan? TrimEnd,
+  AudioInfo? KnownInfo);
+
+public sealed record ProbeResult(Guid Id, AudioInfo Info);
+
+public sealed record ConversionBatchResult(
+  IReadOnlyList<ConversionOutcome> Outcomes,
+  string FfmpegPath,
+  string FfprobePath);

@@ -9,10 +9,12 @@
 
 ## Требования
 
-- Windows 10/11, .NET 10 (Desktop Runtime).
-- Интернет при первом запуске конвертации — программа сама скачает FFmpeg (~80 МБ,
-  gyan.dev, с проверкой SHA-256) в `%LocalAppData%\GoldsrcSoundConverter\ffmpeg`.
-  Можно вместо этого указать свой `ffmpeg.exe` в настройках.
+- Windows 10/11.
+- Интернет при первом запуске конвертации — программа сама скачает FFmpeg
+  (фиксированная версия с проверкой SHA-256) в
+  `%LocalAppData%\GoldsrcSoundConverter\ffmpeg`. Можно вместо этого указать свой
+  `ffmpeg.exe` в настройках.
+- Для сборки из исходников — .NET 10 SDK.
 
 ## Быстрый старт
 
@@ -76,13 +78,72 @@ dotnet test
 Перед публикацией папка `publish/win-x64` полностью очищается, символы отладки
 и папки локализаций не создаются — в релиз попадает только exe и инструкция.
 
-## Структура
+## Архитектура
 
 ```
-src/GoldsrcSoundConverter.Core   — конвертация, FFmpeg, пресеты, волновая форма
-src/GoldsrcSoundConverter.App    — WPF-интерфейс (MVVM)
-tests/GoldsrcSoundConverter.Tests — unit + интеграционные тесты (нужен FFmpeg)
+Core  — бизнес-логика: AudioConverter/BatchConverter/ConversionPlanner,
+        InputFileDiscoverer, Ffmpeg-обвязка и манифест FFmpeg, настройки,
+        пресеты, волновая форма, кэш предпросмотра. Не зависит от WPF.
+
+App   — WPF и платформенные интеграции:
+        ViewModels/{MainViewModel, QueueItemViewModel};
+        Services/{ConversionService, ConversionRunController, QueueManager,
+                  PlaybackCoordinator, WaveformLoader, PresetCatalog,
+                  ConversionRequestFactory, LogBuffer};
+        Infrastructure/{Audio (NAudio), FilePicker, Shell};
+        Composition/ServiceCollectionExtensions — DI-композиция,
+        App.xaml.cs — Generic Host.
+
+Tests — GoldsrcSoundConverter.Core.Tests (net10.0) и
+        GoldsrcSoundConverter.App.Tests (net10.0-windows) на fake-сервисах;
+        интеграционные тесты с реальным FFmpeg помечены категорией Integration
+        и пропускаются, если FFmpeg недоступен.
 ```
 
-Интеграционные тесты используют уже установленный FFmpeg из
-`%LocalAppData%\GoldsrcSoundConverter\ffmpeg` или путь из переменной `GSC_FFMPEG`.
+Правила зависимостей:
+
+- Core не знает про WPF, диалоги, `Application.Current` и не запускает процессы напрямую.
+- ViewModel не создаёт инфраструктуру (`new`), а получает сервисы через конструктор.
+- Application-сервисы (`ConversionService`, `ConversionRunController`) работают только с
+  Core-моделями; `QueueItemViewModel` мутируют только presentation-сервисы (`QueueManager`,
+  `WaveformLoader`, `QueueConversionPresenter`) и сама ViewModel.
+- UI-специфичный код (DWM-заголовок, drag&drop, автоскролл) остаётся в `MainWindow.xaml.cs`.
+
+## Разработка
+
+```powershell
+dotnet restore
+dotnet build
+dotnet test                                      # всё, интеграционные пропустятся без FFmpeg
+dotnet test --filter "Category!=Integration"     # только unit-тесты
+dotnet test --filter "Category=Integration"      # только интеграционные (нужен FFmpeg)
+```
+
+Интеграционные тесты ищут FFmpeg в переменной `GSC_FFMPEG`, затем в
+`%LocalAppData%\GoldsrcSoundConverter\ffmpeg`, затем в `PATH`.
+
+В проекте включены `AnalysisLevel=latest-recommended` и
+`EnforceCodeStyleInBuild`; сборка должна проходить без предупреждений
+(CA1716 подавлен: имена вида `Stop` заданы контрактами).
+
+## Политика FFmpeg
+
+Версия FFmpeg зафиксирована в `src/GoldsrcSoundConverter.Core/Ffmpeg/ffmpeg.manifest.json`
+(version/url/sha256), который встраивается в сборку как ресурс
+(`FfmpegManifestLoader`). Архив скачивается с GitHub-релизов gyan.dev и всегда
+проверяется по SHA-256. Обновление версии — отдельное осознанное изменение:
+version, URL и checksum меняются вместе; CI читает тот же манифест.
+
+## Непрерывная интеграция
+
+`.github/workflows/ci.yml` на каждый push и pull request выполняет restore,
+Release-сборку и полный прогон тестов (включая интеграционные). CI скачивает ту же
+зафиксированную сборку FFmpeg, проверяет её SHA-256 и передаёт путь через
+`GSC_FFMPEG`.
+
+## Релиз
+
+Тег вида `v1.1.0` запускает `.github/workflows/release.yml`: workflow собирает
+архив через `publish.ps1 -SkipTests` и создаёт GitHub Release с
+`GoldsrcSoundConverter-<версия>-win-x64.zip`. Локально тот же результат даёт
+`.\publish.ps1 -Version 1.1.0`.

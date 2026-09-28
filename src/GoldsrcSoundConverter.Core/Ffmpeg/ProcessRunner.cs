@@ -3,9 +3,9 @@ using System.Text;
 
 namespace GoldsrcSoundConverter.Core.Ffmpeg;
 
-public static class FfmpegRunner
+public sealed class ProcessRunner : IProcessRunner
 {
-  public static async Task<ProcessResult> RunAsync(
+  public async Task<ProcessResult> RunAsync(
     string executablePath,
     IReadOnlyList<string> arguments,
     Action<string>? onStandardOutputLine = null,
@@ -70,7 +70,7 @@ public static class FfmpegRunner
     return new ProcessResult(process.ExitCode, standardOutput.ToString(), standardError.ToString());
   }
 
-  public static async Task<string> RunBinaryAsync(
+  public async Task<string> RunBinaryAsync(
     string executablePath,
     IReadOnlyList<string> arguments,
     Func<Stream, CancellationToken, Task> standardOutputConsumer,

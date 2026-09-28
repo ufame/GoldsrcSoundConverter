@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Publish
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          .\publish.ps1 -Version $version -SkipTests
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = Get-ChildItem publish/GoldsrcSoundConverter-*-win-x64.zip | Select-Object -First 1
+          if (-not $zip) { throw 'Release archive not found.' }
+          gh release create "${{ github.ref_name }}" $zip.FullName --title "${{ github.ref_name }}" --generate-notes

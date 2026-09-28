@@ -1,59 +1,76 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.IO;
-using System.Windows;
-using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GoldsrcSoundConverter.App.Infrastructure.FilePicker;
+using GoldsrcSoundConverter.App.Infrastructure.Shell;
 using GoldsrcSoundConverter.App.Services;
 using GoldsrcSoundConverter.Core.Audio;
 using GoldsrcSoundConverter.Core.Ffmpeg;
-using GoldsrcSoundConverter.Core.Files;
 using GoldsrcSoundConverter.Core.Models;
 using GoldsrcSoundConverter.Core.Settings;
-using Microsoft.Win32;
 
 namespace GoldsrcSoundConverter.App.ViewModels;
 
 public partial class MainViewModel : ObservableObject, IDisposable
 {
-  private readonly SettingsStore _settingsStore = new();
-  private readonly AudioPreviewService _preview = new();
-  private readonly SemaphoreSlim _ffmpegLock = new(1, 1);
-  private readonly SemaphoreSlim _probeGate = new(3, 3);
-  private readonly DispatcherTimer _timer;
+  private readonly ISettingsStore _settingsStore;
+  private readonly IFilePicker _filePicker;
+  private readonly IFolderLauncher _folderLauncher;
+  private readonly IConversionService _conversionService;
+  private readonly IPlaybackCoordinator _playback;
+  private readonly IQueueManager _queue;
+  private readonly IConversionRequestFactory _requestFactory;
+  private readonly IPresetCatalog _presetCatalog;
+  private readonly IConversionRunController _runController;
+  private readonly IQueueConversionPresenter _presenter;
+  private readonly IWaveformLoader _waveforms;
+  private readonly ILogBuffer _log;
 
-  private string? _ffmpegPath;
-  private string? _ffprobePath;
-  private CancellationTokenSource? _conversionCts;
   private bool _applyingPreset;
-  private bool _playSelection;
-  private double? _stopAtSeconds;
 
-  public MainViewModel()
+  public MainViewModel(
+    ISettingsStore settingsStore,
+    IFilePicker filePicker,
+    IFolderLauncher folderLauncher,
+    IConversionService conversionService,
+    IPlaybackCoordinator playback,
+    IQueueManager queue,
+    IConversionRequestFactory requestFactory,
+    IPresetCatalog presetCatalog,
+    IConversionRunController runController,
+    IQueueConversionPresenter presenter,
+    IWaveformLoader waveforms,
+    ILogBuffer log)
   {
+    _settingsStore = settingsStore;
+    _filePicker = filePicker;
+    _folderLauncher = folderLauncher;
+    _conversionService = conversionService;
+    _playback = playback;
+    _queue = queue;
+    _requestFactory = requestFactory;
+    _presetCatalog = presetCatalog;
+    _runController = runController;
+    _presenter = presenter;
+    _waveforms = waveforms;
+    _log = log;
     Items.CollectionChanged += (_, _) => StartCommand.NotifyCanExecuteChanged();
-    _preview.PlaybackStopped += OnPlaybackStopped;
+    _playback.PositionChanged += OnPlaybackPositionChanged;
+    _runController.BusyChanged += OnRunControllerBusyChanged;
 
     var settings = _settingsStore.Load();
     InitialWindowWidth = settings.WindowWidth > 400 ? settings.WindowWidth : 1400;
     InitialWindowHeight = settings.WindowHeight > 300 ? settings.WindowHeight : 900;
     ApplySettings(settings);
 
-    _timer = new DispatcherTimer(DispatcherPriority.Background)
-    {
-      Interval = TimeSpan.FromMilliseconds(60),
-    };
-    _timer.Tick += (_, _) => Tick();
-    _timer.Start();
-
     UpdateFfmpegStatus();
     AppendLog("Готово к работе. Перетащите файлы в окно или нажмите «Добавить файлы».");
   }
 
-  public ObservableCollection<QueueItemViewModel> Items { get; } = new();
+  public ObservableCollection<QueueItemViewModel> Items => _queue.Items;
 
-  public ObservableCollection<string> LogEntries { get; } = new();
+  public ObservableCollection<string> LogEntries => _log.Entries;
 
   public ObservableCollection<Cs16Preset> Presets { get; } = new();
 
@@ -154,6 +171,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
   [ObservableProperty]
   [NotifyCanExecuteChangedFor(nameof(StartCommand))]
   [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
+  [NotifyCanExecuteChangedFor(nameof(AddFilesCommand))]
+  [NotifyCanExecuteChangedFor(nameof(AddFolderCommand))]
+  [NotifyCanExecuteChangedFor(nameof(RemoveSelectedCommand))]
+  [NotifyCanExecuteChangedFor(nameof(ClearCommand))]
+  [NotifyPropertyChangedFor(nameof(CanEditQueue))]
   private bool _isBusy;
 
   [ObservableProperty]
@@ -196,49 +218,31 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   public bool CanStart => !IsBusy && Items.Count > 0;
 
+  public bool CanEditQueue => !IsBusy;
+
   public void Dispose()
   {
-    _timer.Stop();
-    _preview.Dispose();
-    _conversionCts?.Dispose();
+    _playback.PositionChanged -= OnPlaybackPositionChanged;
+    _runController.BusyChanged -= OnRunControllerBusyChanged;
+    _runController.Dispose();
+    GC.SuppressFinalize(this);
   }
 
   public void AddPaths(IEnumerable<string> paths)
   {
-    var added = 0;
-
-    foreach (var path in paths)
+    if (IsBusy)
     {
-      try
-      {
-        if (Directory.Exists(path))
-        {
-          foreach (var file in Directory
-                     .EnumerateFiles(path, "*", SearchOption.AllDirectories)
-                     .Where(AudioFileTypes.IsSupported))
-          {
-            if (AddFile(file, path))
-            {
-              added++;
-            }
-          }
-        }
-        else if (File.Exists(path) && AudioFileTypes.IsSupported(path) && AddFile(path, null))
-        {
-          added++;
-        }
-      }
-      catch (Exception ex)
-      {
-        AppendLog($"Не удалось добавить «{path}»: {ex.Message}");
-      }
+      StatusText = "Дождитесь окончания конвертации";
+      return;
     }
+
+    var added = _queue.Add(paths, BuildOptions());
 
     StatusText = added > 0
       ? $"Добавлено файлов: {added}"
       : "Новые файлы не найдены";
 
-    if (added > 0 && !TryGetReadyFfmpeg(out _, out _))
+    if (added > 0 && !_conversionService.TryResolveFfmpeg(out _, out _))
     {
       AppendLog("FFmpeg ещё не установлен — анализ и волновая форма появятся после первой конвертации.");
     }
@@ -249,37 +253,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
     SaveSettingsCore(width, height);
   }
 
-  [RelayCommand]
+  [RelayCommand(CanExecute = nameof(CanEditQueue))]
   private void AddFiles()
   {
-    var dialog = new OpenFileDialog
+    var files = _filePicker.PickFiles();
+    if (files.Count > 0)
     {
-      Title = "Выберите звуковые файлы",
-      Multiselect = true,
-      Filter = AudioFileTypes.FileDialogFilter,
-    };
-
-    if (dialog.ShowDialog() == true)
-    {
-      AddPaths(dialog.FileNames);
+      AddPaths(files);
     }
   }
 
-  [RelayCommand]
+  [RelayCommand(CanExecute = nameof(CanEditQueue))]
   private void AddFolder()
   {
-    var dialog = new OpenFolderDialog
+    var folder = _filePicker.PickFolder("Выберите папку со звуками");
+    if (folder is not null)
     {
-      Title = "Выберите папку со звуками",
-    };
-
-    if (dialog.ShowDialog() == true)
-    {
-      AddPaths(new[] { dialog.FolderName });
+      AddPaths(new[] { folder });
     }
   }
 
-  [RelayCommand]
+  [RelayCommand(CanExecute = nameof(CanEditQueue))]
   private void RemoveSelected()
   {
     if (SelectedItem is null)
@@ -287,15 +281,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
       return;
     }
 
-    Items.Remove(SelectedItem);
-    ReindexItems();
+    _queue.Remove(SelectedItem);
     SelectedItem = null;
   }
 
-  [RelayCommand]
+  [RelayCommand(CanExecute = nameof(CanEditQueue))]
   private void Clear()
   {
-    Items.Clear();
+    _queue.Clear();
     SelectedItem = null;
     StatusText = "Очередь очищена";
   }
@@ -324,112 +317,54 @@ public partial class MainViewModel : ObservableObject, IDisposable
       return;
     }
 
-    IsBusy = true;
     OverallProgress = 0;
-    _conversionCts = new CancellationTokenSource();
-    var cancellationToken = _conversionCts.Token;
+    StatusText = "Подготовка FFmpeg…";
+
+    var options = BuildOptions();
+
+    if (SelectedItem is not null)
+    {
+      _ = _waveforms.EnsureLoadedAsync(SelectedItem, options);
+    }
+
+    StatusText = $"Конвертация: {Items.Count} файл(ов)…";
 
     try
     {
-      StatusText = "Подготовка FFmpeg…";
-      var (ffmpeg, ffprobe) = await EnsureFfmpegAsync(showUiProgress: true, cancellationToken);
+      var workItems = _presenter.BeginRun();
 
-      await ProbeMissingItemsAsync(ffprobe, cancellationToken);
-      if (SelectedItem is not null)
-      {
-        _ = LoadWaveformAsync(SelectedItem);
-      }
-
-      var options = BuildOptions();
-      var jobs = new List<ConversionJob>();
-      var knownInfos = new Dictionary<int, AudioInfo>();
-
-      foreach (var item in Items)
-      {
-        item.Progress = 0;
-        item.Error = null;
-        item.OutputPath = null;
-        item.Stage = ConversionStage.Pending;
-        jobs.Add(new ConversionJob(
-          item.Index,
-          item.SourcePath,
-          item.SourceRoot,
-          item.HasTrim ? TimeSpan.FromSeconds(item.TrimStartSeconds) : null,
-          item.HasTrim ? TimeSpan.FromSeconds(item.TrimEndSeconds) : null));
-
-        if (item.Info is not null)
-        {
-          knownInfos[item.Index] = item.Info;
-        }
-      }
-
-      var progress = new Progress<ConversionProgress>(ApplyProgress);
-      StatusText = $"Конвертация: {jobs.Count} файл(ов)…";
-
-      var outcomes = await new BatchConverter(ffmpeg, ffprobe)
-        .RunAsync(jobs, options, knownInfos, progress, AppendLog, cancellationToken)
+      var result = await _runController
+        .RunAsync(
+          workItems,
+          options,
+          _presenter.CreateProgressHandler(value => OverallProgress = value),
+          _presenter.CreateProbeHandler(options),
+          new Progress<BootstrapProgress>(ApplyBootstrapProgress))
         .ConfigureAwait(true);
 
-      var completed = 0;
-      var failed = 0;
-      var skipped = 0;
+      _presenter.Complete(result);
+      UpdateFfmpegStatus();
 
-      foreach (var outcome in outcomes)
+      if (result.Summary.Cancelled)
       {
-        var item = Items.FirstOrDefault(i => i.Index == outcome.Index);
-        if (item is null)
-        {
-          continue;
-        }
-
-        if (outcome.Success && outcome.Skipped)
-        {
-          item.Stage = ConversionStage.Skipped;
-          skipped++;
-        }
-        else if (outcome.Success)
-        {
-          item.Stage = ConversionStage.Completed;
-          item.Progress = 1;
-          item.OutputPath = outcome.OutputPath;
-          completed++;
-        }
-        else
-        {
-          item.Stage = ConversionStage.Failed;
-          item.Error = outcome.Error;
-          failed++;
-        }
+        StatusText = "Конвертация отменена";
+      }
+      else
+      {
+        OverallProgress = 1;
+        StatusText = $"Готово: успешно {result.Summary.Completed}, "
+          + $"ошибок {result.Summary.Failed}, пропущено {result.Summary.Skipped}";
       }
 
-      OverallProgress = 1;
-      StatusText = $"Готово: успешно {completed}, ошибок {failed}, пропущено {skipped}";
-      AppendLog(StatusText);
-    }
-    catch (OperationCanceledException)
-    {
-      foreach (var item in Items.Where(i => i.Stage is ConversionStage.Pending
-        or ConversionStage.Probing
-        or ConversionStage.Normalizing
-        or ConversionStage.Converting))
-      {
-        item.Stage = ConversionStage.Pending;
-        item.Progress = 0;
-      }
-
-      StatusText = "Конвертация отменена";
       AppendLog(StatusText);
     }
     catch (Exception ex)
     {
       StatusText = "Ошибка: " + ex.Message;
-      AppendLog("Ошибка: " + ex.Message);
+      AppendLog(StatusText);
     }
     finally
     {
-      IsBusy = false;
-      _conversionCts?.Dispose();
-      _conversionCts = null;
       SaveSettingsCore(null, null);
     }
   }
@@ -438,190 +373,112 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private void Cancel()
   {
     StatusText = "Отмена…";
-    _conversionCts?.Cancel();
+    _runController.Cancel();
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private async Task PlayAsync()
   {
-    var item = SelectedItem;
-    if (item is null || !await PreparePreviewAsync(item))
+    if (SelectedItem is not { } item)
     {
       return;
     }
 
-    _playSelection = false;
-    _stopAtSeconds = null;
-    _preview.Play();
+    ApplyPlaybackResult(await _playback
+      .PlayAsync(item, new Progress<BootstrapProgress>(ApplyBootstrapProgress))
+      .ConfigureAwait(true));
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private void Pause()
   {
-    _preview.Pause();
+    _playback.Pause();
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private void Stop()
   {
-    _preview.Stop();
-    _stopAtSeconds = null;
+    _playback.Stop();
     PlaybackPositionSeconds = 0;
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private async Task PlaySelectionAsync()
   {
-    var item = SelectedItem;
-    if (item is null)
+    if (SelectedItem is not { } item)
     {
       return;
     }
 
-    if (item.TrimEndSeconds - item.TrimStartSeconds <= 0.01)
-    {
-      await PlayAsync();
-      return;
-    }
-
-    if (!await PreparePreviewAsync(item))
-    {
-      return;
-    }
-
-    _preview.Position = TimeSpan.FromSeconds(item.TrimStartSeconds);
-    _stopAtSeconds = item.TrimEndSeconds;
-    _playSelection = true;
-    _preview.Play();
+    ApplyPlaybackResult(await _playback
+      .PlaySelectionAsync(item, new Progress<BootstrapProgress>(ApplyBootstrapProgress))
+      .ConfigureAwait(true));
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private async Task PreviewResultAsync()
   {
-    var item = SelectedItem;
-    if (item is null)
+    if (SelectedItem is not { } item)
     {
       return;
     }
 
-    try
-    {
-      StatusText = "Рендер результата…";
-      _preview.Unload();
-      var (ffmpeg, ffprobe) = await EnsureFfmpegAsync(showUiProgress: true, CancellationToken.None);
+    StatusText = "Рендер результата…";
 
-      var options = BuildOptions();
-      options.OutputDirectory = Path.Combine(
-        Path.GetTempPath(), "GoldsrcSoundConverter", "preview", "result");
-      options.AsciiNames = false;
-      options.LowercaseNames = false;
-      options.CollisionPolicy = CollisionPolicy.Overwrite;
-      options.Parallelism = 1;
-      Directory.CreateDirectory(options.OutputDirectory);
+    var previewDirectory = Path.Combine(
+      Path.GetTempPath(), "GoldsrcSoundConverter", "preview", "result");
+    var options = _requestFactory.CreatePreviewOptions(SnapshotSettings(), previewDirectory);
+    Directory.CreateDirectory(options.OutputDirectory);
 
-      var job = new ConversionJob(
-        0,
-        item.SourcePath,
-        null,
-        item.HasTrim ? TimeSpan.FromSeconds(item.TrimStartSeconds) : null,
-        item.HasTrim ? TimeSpan.FromSeconds(item.TrimEndSeconds) : null);
-
-      var outcome = await new AudioConverter(ffmpeg, ffprobe)
-        .ConvertAsync(job, options, item.Info, null, AppendLog)
-        .ConfigureAwait(true);
-
-      if (outcome.Success && outcome.OutputPath is not null)
-      {
-        _preview.Load(outcome.OutputPath);
-        _preview.Volume = PlaybackVolume;
-        _playSelection = false;
-        _stopAtSeconds = null;
-        _preview.Play();
-        StatusText = "Воспроизведение результата";
-      }
-      else
-      {
-        StatusText = "Не удалось создать результат: " + outcome.Error;
-      }
-    }
-    catch (Exception ex)
-    {
-      StatusText = "Ошибка предпросмотра: " + ex.Message;
-      AppendLog(StatusText);
-    }
+    ApplyPlaybackResult(await _playback
+      .PreviewResultAsync(item, options, new Progress<BootstrapProgress>(ApplyBootstrapProgress))
+      .ConfigureAwait(true));
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private void SetTrimStart()
   {
-    if (SelectedItem is null)
+    if (SelectedItem is { } item)
     {
-      return;
+      StatusText = _playback.SetTrimStart(item);
     }
-
-    SelectedItem.TrimStartSeconds = Math.Min(PlaybackPositionSeconds, SelectedItem.TrimEndSeconds);
-    StatusText = "Начало обрезки: " + TimeText.Format(SelectedItem.TrimStartSeconds);
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private void SetTrimEnd()
   {
-    if (SelectedItem is null)
+    if (SelectedItem is { } item)
     {
-      return;
+      StatusText = _playback.SetTrimEnd(item);
     }
-
-    SelectedItem.TrimEndSeconds = Math.Max(PlaybackPositionSeconds, SelectedItem.TrimStartSeconds);
-    StatusText = "Конец обрезки: " + TimeText.Format(SelectedItem.TrimEndSeconds);
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private void ResetTrim()
   {
-    if (SelectedItem is null)
+    if (SelectedItem is { } item)
     {
-      return;
+      StatusText = _playback.ResetTrim(item);
     }
-
-    SelectedItem.TrimStartSeconds = 0;
-    SelectedItem.TrimEndSeconds = SelectedItem.DurationSeconds;
-    StatusText = "Обрезка сброшена";
   }
 
   [RelayCommand]
   private void BrowseOutputDirectory()
   {
-    var dialog = new OpenFolderDialog
+    var folder = _filePicker.PickFolder("Папка для результатов", OutputDirectory);
+    if (folder is not null)
     {
-      Title = "Папка для результатов",
-    };
-
-    if (Directory.Exists(OutputDirectory))
-    {
-      dialog.InitialDirectory = OutputDirectory;
-    }
-
-    if (dialog.ShowDialog() == true)
-    {
-      OutputDirectory = dialog.FolderName;
+      OutputDirectory = folder;
     }
   }
 
   [RelayCommand]
   private void BrowseFfmpeg()
   {
-    var dialog = new OpenFileDialog
+    var file = _filePicker.PickFile("Выберите ffmpeg.exe", "ffmpeg.exe|ffmpeg.exe|Все файлы|*.*");
+    if (file is not null)
     {
-      Title = "Выберите ffmpeg.exe",
-      Filter = "ffmpeg.exe|ffmpeg.exe|Все файлы|*.*",
-    };
-
-    if (dialog.ShowDialog() == true)
-    {
-      FfmpegCustomPath = dialog.FileName;
-      _ffmpegPath = null;
-      _ffprobePath = null;
-      UpdateFfmpegStatus();
+      FfmpegCustomPath = file;
     }
   }
 
@@ -636,11 +493,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return;
       }
 
-      Process.Start(new ProcessStartInfo
-      {
-        FileName = OutputDirectory,
-        UseShellExecute = true,
-      });
+      _folderLauncher.Open(OutputDirectory);
     }
     catch (Exception ex)
     {
@@ -655,289 +508,59 @@ public partial class MainViewModel : ObservableObject, IDisposable
     StatusText = "Настройки сохранены";
   }
 
-  private bool AddFile(string path, string? sourceRoot)
+  private void ApplyPlaybackResult(PlaybackResult result)
   {
-    if (Items.Any(i => string.Equals(i.SourcePath, path, StringComparison.OrdinalIgnoreCase)))
+    if (result.Status is not null)
     {
-      return false;
-    }
-
-    var item = new QueueItemViewModel(Items.Count, path, sourceRoot);
-    Items.Add(item);
-    item.UpdateTargetSize(BuildOptions());
-    _ = ProbeItemAsync(item);
-    return true;
-  }
-
-  private void ReindexItems()
-  {
-    for (var i = 0; i < Items.Count; i++)
-    {
-      var replacement = new QueueItemViewModel(i, Items[i].SourcePath, Items[i].SourceRoot)
-      {
-        Info = Items[i].Info,
-        Waveform = Items[i].Waveform,
-        TrimStartSeconds = Items[i].TrimStartSeconds,
-        TrimEndSeconds = Items[i].TrimEndSeconds,
-        Stage = Items[i].Stage,
-        Progress = Items[i].Progress,
-        OutputPath = Items[i].OutputPath,
-        Error = Items[i].Error,
-        TargetSizeText = Items[i].TargetSizeText,
-      };
-
-      Items[i] = replacement;
+      StatusText = result.Status;
     }
   }
 
-  private async Task ProbeItemAsync(QueueItemViewModel item)
+  private void ApplyBootstrapProgress(BootstrapProgress progress)
   {
-    if (item.Info is not null || !TryGetReadyFfmpeg(out _, out var ffprobe))
-    {
-      return;
-    }
+    FfmpegStatusText = progress.Percent is double percent
+      ? $"{progress.Stage} {percent:P0}"
+      : progress.Stage;
 
-    await _probeGate.WaitAsync().ConfigureAwait(true);
-    try
+    if (progress.Percent is double value)
     {
-      var info = await AudioProbe.ProbeAsync(ffprobe, item.SourcePath).ConfigureAwait(true);
-      item.Info = info;
-      item.UpdateTargetSize(BuildOptions());
-    }
-    catch (Exception ex)
-    {
-      AppendLog($"Не удалось проанализировать {item.FileName}: {ex.Message}");
-    }
-    finally
-    {
-      _probeGate.Release();
+      OverallProgress = value;
     }
   }
 
-  private async Task ProbeMissingItemsAsync(string ffprobePath, CancellationToken cancellationToken)
+  private void OnRunControllerBusyChanged(object? sender, EventArgs e)
   {
-    var pending = Items.Where(i => i.Info is null).ToArray();
-    if (pending.Length == 0)
-    {
-      return;
-    }
-
-    StatusText = "Анализ файлов…";
-    await Parallel.ForEachAsync(
-      pending,
-      new ParallelOptions { MaxDegreeOfParallelism = 3, CancellationToken = cancellationToken },
-      async (item, token) =>
-      {
-        try
-        {
-          var info = await AudioProbe.ProbeAsync(ffprobePath, item.SourcePath, token).ConfigureAwait(true);
-          item.Info = info;
-          item.UpdateTargetSize(BuildOptions());
-        }
-        catch (OperationCanceledException)
-        {
-          throw;
-        }
-        catch (Exception ex)
-        {
-          AppendLog($"Не удалось проанализировать {item.FileName}: {ex.Message}");
-        }
-      }).ConfigureAwait(true);
+    IsBusy = _runController.IsBusy;
   }
 
-  private async Task<bool> PreparePreviewAsync(QueueItemViewModel item)
+  private void OnPlaybackPositionChanged(object? sender, EventArgs e)
   {
-    try
-    {
-      var (ffmpeg, _) = await EnsureFfmpegAsync(showUiProgress: true, CancellationToken.None);
-      var playable = await PreviewDecoder.EnsurePlayableAsync(ffmpeg, item.SourcePath).ConfigureAwait(true);
-      _preview.Load(playable);
-      _preview.Volume = PlaybackVolume;
-      return true;
-    }
-    catch (Exception ex)
-    {
-      StatusText = "Ошибка предпросмотра: " + ex.Message;
-      AppendLog(StatusText);
-      return false;
-    }
-  }
-
-  private async Task LoadWaveformAsync(QueueItemViewModel item)
-  {
-    if (item.Waveform is not null || item.IsWaveformLoading)
-    {
-      return;
-    }
-
-    if (!TryGetReadyFfmpeg(out var ffmpeg, out _))
-    {
-      return;
-    }
-
-    item.IsWaveformLoading = true;
-    try
-    {
-      var data = await WaveformExtractor.ExtractAsync(ffmpeg, item.SourcePath).ConfigureAwait(true);
-      item.Waveform = data;
-      if (item.Info is null)
-      {
-        item.UpdateTargetSize(BuildOptions());
-      }
-    }
-    catch (Exception ex)
-    {
-      AppendLog($"Волновая форма недоступна для {item.FileName}: {ex.Message}");
-    }
-    finally
-    {
-      item.IsWaveformLoading = false;
-    }
-  }
-
-  private async Task<(string Ffmpeg, string Ffprobe)> EnsureFfmpegAsync(
-    bool showUiProgress,
-    CancellationToken cancellationToken)
-  {
-    if (_ffmpegPath is not null && _ffprobePath is not null)
-    {
-      return (_ffmpegPath, _ffprobePath);
-    }
-
-    await _ffmpegLock.WaitAsync(cancellationToken).ConfigureAwait(true);
-    try
-    {
-      if (_ffmpegPath is not null && _ffprobePath is not null)
-      {
-        return (_ffmpegPath, _ffprobePath);
-      }
-
-      IProgress<BootstrapProgress>? progress = showUiProgress
-        ? new Progress<BootstrapProgress>(p =>
-        {
-          FfmpegStatusText = p.Percent is double percent
-            ? $"{p.Stage} {percent:P0}"
-            : p.Stage;
-          if (p.Percent is double value)
-          {
-            OverallProgress = value;
-          }
-        })
-        : null;
-
-      var bootstrapper = new FfmpegBootstrapper();
-      var result = await bootstrapper
-        .EnsureAsync(FfmpegCustomPath, progress, AppendLog, cancellationToken)
-        .ConfigureAwait(true);
-
-      _ffmpegPath = result.Ffmpeg;
-      _ffprobePath = result.Ffprobe;
-      OverallProgress = 0;
-      UpdateFfmpegStatus();
-      return result;
-    }
-    finally
-    {
-      _ffmpegLock.Release();
-    }
-  }
-
-  private bool TryGetReadyFfmpeg(out string ffmpeg, out string ffprobe)
-  {
-    if (_ffmpegPath is not null && _ffprobePath is not null)
-    {
-      ffmpeg = _ffmpegPath;
-      ffprobe = _ffprobePath;
-      return true;
-    }
-
-    if (FfmpegBootstrapper.TryResolveCustom(FfmpegCustomPath, out ffmpeg, out ffprobe)
-      || new FfmpegBootstrapper().TryResolve(out ffmpeg, out ffprobe))
-    {
-      _ffmpegPath = ffmpeg;
-      _ffprobePath = ffprobe;
-      UpdateFfmpegStatus();
-      return true;
-    }
-
-    ffmpeg = string.Empty;
-    ffprobe = string.Empty;
-    return false;
-  }
-
-  private void ApplyProgress(ConversionProgress progress)
-  {
-    var item = Items.FirstOrDefault(i => i.Index == progress.Index);
-    if (item is null)
-    {
-      return;
-    }
-
-    item.Stage = progress.Stage;
-    item.Progress = progress.Percent;
-
-    if (progress.Stage == ConversionStage.Converting)
-    {
-      var finished = Items.Count(i => i.Stage is ConversionStage.Completed
-        or ConversionStage.Skipped
-        or ConversionStage.Failed);
-      OverallProgress = Items.Count == 0
-        ? 0
-        : Math.Clamp((finished + progress.Percent) / Items.Count, 0, 1);
-    }
-  }
-
-  private void Tick()
-  {
-    if (_preview.HasTrack)
-    {
-      PlaybackPositionSeconds = _preview.Position.TotalSeconds;
-      PlaybackPositionText = $"{TimeText.Format(PlaybackPositionSeconds)} / "
-        + TimeText.Format(_preview.TotalTime.TotalSeconds);
-    }
-    else
-    {
-      PlaybackPositionText = "00:00.000 / 00:00.000";
-    }
-
-    if (_playSelection
-      && _stopAtSeconds is double stopAt
-      && _preview.Position.TotalSeconds >= stopAt)
-    {
-      _preview.Pause();
-      _playSelection = false;
-      _stopAtSeconds = null;
-    }
-  }
-
-  private void OnPlaybackStopped(object? sender, EventArgs e)
-  {
-    if (Application.Current?.Dispatcher is { } dispatcher && !dispatcher.CheckAccess())
-    {
-      dispatcher.BeginInvoke(() => OnPlaybackStopped(sender, e));
-      return;
-    }
-
-    PlaybackPositionSeconds = _preview.Position.TotalSeconds;
+    PlaybackPositionSeconds = _playback.PositionSeconds;
+    PlaybackPositionText = _playback.TotalSeconds > 0
+      ? $"{TimeText.Format(PlaybackPositionSeconds)} / {TimeText.Format(_playback.TotalSeconds)}"
+      : "00:00.000 / 00:00.000";
   }
 
   private ConversionOptions BuildOptions()
   {
-    return new ConversionOptions
-    {
-      Format = Format,
-      SampleRate = SampleRate,
-      Channels = Channels,
-      BitDepth = BitDepth,
-      Mp3BitrateKbps = Mp3BitrateKbps,
-      NormalizePeak = NormalizePeak,
-      OutputDirectory = OutputDirectory,
-      AsciiNames = AsciiNames,
-      LowercaseNames = LowercaseNames,
-      PreserveStructure = PreserveStructure,
-      CollisionPolicy = CollisionPolicy,
-      Parallelism = Parallelism,
-    };
+    return _requestFactory.CreateOptions(SnapshotSettings());
+  }
+
+  private ConversionSettings SnapshotSettings()
+  {
+    return new ConversionSettings(
+      Format,
+      SampleRate,
+      Channels,
+      BitDepth,
+      Mp3BitrateKbps,
+      NormalizePeak,
+      AsciiNames,
+      LowercaseNames,
+      PreserveStructure,
+      CollisionPolicy,
+      Parallelism,
+      OutputDirectory);
   }
 
   private void SetFormat(OutputAudioFormat format)
@@ -958,30 +581,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
   {
     _applyingPreset = true;
     Presets.Clear();
-    foreach (var preset in Cs16Presets.ForFormat(Format))
+    foreach (var preset in _presetCatalog.ForFormat(Format))
     {
       Presets.Add(preset);
     }
 
-    SelectedPreset = Cs16Presets.Match(BuildOptions()) ?? Cs16Presets.ById(Cs16Presets.CustomId);
+    SelectedPreset = _presetCatalog.Resolve(BuildOptions());
     _applyingPreset = false;
   }
 
   private void EnsureCustomPreset()
   {
-    var match = Cs16Presets.Match(BuildOptions());
     _applyingPreset = true;
-    SelectedPreset = match ?? Cs16Presets.ById(Cs16Presets.CustomId);
+    SelectedPreset = _presetCatalog.Resolve(BuildOptions());
     _applyingPreset = false;
   }
 
   private void RecomputeTargetSizes()
   {
-    var options = BuildOptions();
-    foreach (var item in Items)
-    {
-      item.UpdateTargetSize(options);
-    }
+    _queue.RecalculateTargetSizes(BuildOptions());
   }
 
   private void ApplySettings(AppSettings settings)
@@ -1056,10 +674,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   private void UpdateFfmpegStatus()
   {
-    if (_ffmpegPath is not null && _ffprobePath is not null)
+    if (_conversionService.FfmpegPath is not null && _conversionService.FfprobePath is not null)
     {
       FfmpegStatusText = "FFmpeg: готов";
-      FfmpegDownloadText = _ffmpegPath;
+      FfmpegDownloadText = _conversionService.FfmpegPath;
       return;
     }
 
@@ -1070,31 +688,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   private void AppendLog(string message)
   {
-    if (Application.Current?.Dispatcher is { } dispatcher && !dispatcher.CheckAccess())
-    {
-      dispatcher.BeginInvoke(() => AppendLog(message));
-      return;
-    }
-
-    LogEntries.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
-    while (LogEntries.Count > 500)
-    {
-      LogEntries.RemoveAt(0);
-    }
+    _log.Add(message);
   }
 
   partial void OnSelectedItemChanged(QueueItemViewModel? value)
   {
     OnPropertyChanged(nameof(HasSelection));
-    _preview.Stop();
-    _playSelection = false;
-    _stopAtSeconds = null;
+    _playback.Stop();
     PlaybackPositionSeconds = 0;
+    PlaybackPositionText = "00:00.000 / 00:00.000";
     EditorTitle = value is null ? "Выберите файл в очереди" : value.FileName;
 
     if (value is not null)
     {
-      _ = LoadWaveformAsync(value);
+      _ = _waveforms.EnsureLoadedAsync(value, BuildOptions());
     }
   }
 
@@ -1161,13 +768,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   partial void OnFfmpegCustomPathChanged(string? value)
   {
-    _ffmpegPath = null;
-    _ffprobePath = null;
+    _conversionService.SetCustomFfmpegPath(value);
     UpdateFfmpegStatus();
   }
 
   partial void OnPlaybackVolumeChanged(double value)
   {
-    _preview.Volume = value;
+    _playback.Volume = value;
   }
 }

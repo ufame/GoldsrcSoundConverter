@@ -4,6 +4,7 @@
     <Project Path="src/GoldsrcSoundConverter.Core/GoldsrcSoundConverter.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/GoldsrcSoundConverter.Tests/GoldsrcSoundConverter.Tests.csproj" />
+    <Project Path="tests/GoldsrcSoundConverter.App.Tests/GoldsrcSoundConverter.App.Tests.csproj" />
+    <Project Path="tests/GoldsrcSoundConverter.Core.Tests/GoldsrcSoundConverter.Core.Tests.csproj" />
   </Folder>
 </Solution>

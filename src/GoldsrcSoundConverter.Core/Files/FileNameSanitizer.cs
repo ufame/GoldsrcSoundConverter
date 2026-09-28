@@ -19,7 +19,15 @@ public static class FileNameSanitizer
   };
 
   private static readonly Regex UnderscoreRuns = new(@"_+", RegexOptions.Compiled);
-  private static readonly Regex InvalidRuns = new(@"[^A-Za-z0-9\-_.]+", RegexOptions.Compiled);
+  private static readonly Regex InvalidAsciiRuns = new(@"[^A-Za-z0-9\-_.]+", RegexOptions.Compiled);
+  private static readonly Regex InvalidUnicodeRuns = new(@"[^\p{L}\p{N}\p{M}\-_\.]+", RegexOptions.Compiled);
+
+  private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
+  {
+    "CON", "PRN", "AUX", "NUL",
+    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+  };
 
   public static string Sanitize(string name, bool toAscii, bool lowercase)
   {
@@ -31,19 +39,27 @@ public static class FileNameSanitizer
     var builder = new StringBuilder(name.Length);
     foreach (var ch in name)
     {
-      if (toAscii && Transliteration.TryGetValue(char.ToLowerInvariant(ch), out var replacement))
+      if (toAscii)
       {
-        builder.Append(char.IsUpper(ch) ? Capitalize(replacement) : replacement);
+        if (Transliteration.TryGetValue(char.ToLowerInvariant(ch), out var replacement))
+        {
+          builder.Append(char.IsUpper(ch) ? Capitalize(replacement) : replacement);
+          continue;
+        }
+
+        if (ch < 128)
+        {
+          builder.Append(ch);
+        }
+
         continue;
       }
 
-      if (ch < 128)
-      {
-        builder.Append(ch);
-      }
+      builder.Append(ch);
     }
 
-    var result = InvalidRuns.Replace(builder.ToString(), "_");
+    var result = (toAscii ? InvalidAsciiRuns : InvalidUnicodeRuns)
+      .Replace(builder.ToString(), "_");
     result = UnderscoreRuns.Replace(result, "_").Trim('_', '.', '-', ' ');
 
     if (result.Length > MaxLength)
@@ -53,10 +69,26 @@ public static class FileNameSanitizer
 
     if (result.Length == 0)
     {
-      result = "sound";
+      return "sound";
+    }
+
+    if (IsReserved(result))
+    {
+      result = "_" + result;
     }
 
     return lowercase ? result.ToLowerInvariant() : result;
+  }
+
+  private static bool IsReserved(string name)
+  {
+    if (ReservedNames.Contains(name))
+    {
+      return true;
+    }
+
+    var dot = name.IndexOf('.');
+    return dot > 0 && ReservedNames.Contains(name[..dot]);
   }
 
   private static string Capitalize(string value)

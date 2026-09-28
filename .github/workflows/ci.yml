@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Fetch pinned FFmpeg
+        shell: pwsh
+        run: |
+          $manifest = Get-Content src/GoldsrcSoundConverter.Core/Ffmpeg/ffmpeg.manifest.json -Raw | ConvertFrom-Json
+          $url = $manifest.url
+          $sha = $manifest.sha256
+          if (-not $url -or -not $sha) { throw 'Failed to read pinned FFmpeg manifest.' }
+          $archive = Join-Path $env:RUNNER_TEMP 'ffmpeg.zip'
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $sha) { throw "FFmpeg checksum mismatch: $actual" }
+          $destination = Join-Path $env:RUNNER_TEMP 'ffmpeg'
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force
+          $ffmpeg = Get-ChildItem -Path $destination -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          $ffprobe = Get-ChildItem -Path $destination -Recurse -Filter ffprobe.exe | Select-Object -First 1
+          if (-not $ffmpeg -or -not $ffprobe) { throw 'ffmpeg.exe/ffprobe.exe not found in archive.' }
+          "GSC_FFMPEG=$($ffmpeg.FullName)" >> $env:GITHUB_ENV
+
+      - name: Test
+        run: dotnet test --no-build --configuration Release

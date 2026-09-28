@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace GoldsrcSoundConverter.App.ViewModels;
 
 public static class TimeText
@@ -6,8 +8,8 @@ public static class TimeText
   {
     var value = TimeSpan.FromSeconds(Math.Max(0, seconds));
     return value.TotalHours >= 1
-      ? value.ToString(@"h\:mm\:ss\.fff")
-      : value.ToString(@"mm\:ss\.fff");
+      ? value.ToString(@"h\:mm\:ss\.fff", CultureInfo.InvariantCulture)
+      : value.ToString(@"mm\:ss\.fff", CultureInfo.InvariantCulture);
   }
 }
 

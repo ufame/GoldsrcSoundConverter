@@ -4,25 +4,30 @@ namespace GoldsrcSoundConverter.Core.Audio;
 
 public sealed class BatchConverter
 {
-  private readonly AudioConverter _converter;
+  private readonly IAudioConverter _converter;
 
-  public BatchConverter(string ffmpegPath, string ffprobePath)
+  public BatchConverter(IAudioConverter converter)
   {
-    _converter = new AudioConverter(ffmpegPath, ffprobePath);
+    _converter = converter;
   }
 
   public async Task<IReadOnlyList<ConversionOutcome>> RunAsync(
     IReadOnlyList<ConversionJob> jobs,
     ConversionOptions options,
-    IReadOnlyDictionary<int, AudioInfo>? knownInfos = null,
+    IReadOnlyDictionary<Guid, AudioInfo>? knownInfos = null,
     IProgress<ConversionProgress>? progress = null,
     Action<string>? log = null,
     CancellationToken cancellationToken = default)
   {
+    options.Validate();
+
     var results = new ConversionOutcome?[jobs.Count];
     var parallelOptions = new ParallelOptions
     {
-      MaxDegreeOfParallelism = Math.Clamp(options.Parallelism, 1, 16),
+      MaxDegreeOfParallelism = Math.Clamp(
+        options.Parallelism,
+        ConversionOptions.MinParallelism,
+        ConversionOptions.MaxParallelism),
       CancellationToken = cancellationToken,
     };
 
@@ -33,7 +38,7 @@ public sealed class BatchConverter
       {
         var job = jobs[index];
         AudioInfo? knownInfo = null;
-        knownInfos?.TryGetValue(job.Index, out knownInfo);
+        knownInfos?.TryGetValue(job.Id, out knownInfo);
         results[index] = await _converter
           .ConvertAsync(job, options, knownInfo, progress, log, token)
           .ConfigureAwait(false);
@@ -42,7 +47,6 @@ public sealed class BatchConverter
     return results
       .Where(r => r is not null)
       .Select(r => r!)
-      .OrderBy(r => r.Index)
       .ToArray();
   }
 }
