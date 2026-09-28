@@ -25,10 +25,10 @@ jobs:
       - name: Fetch pinned FFmpeg
         shell: pwsh
         run: |
-          $source = Get-Content src/GoldsrcSoundConverter.Core/Ffmpeg/FfmpegBootstrapper.cs -Raw
-          $url = [regex]::Match($source, 'DownloadUrl\s*=\s*"([^"]+)"').Groups[1].Value
-          $sha = [regex]::Match($source, 'ArchiveSha256\s*=\s*"([^"]+)"').Groups[1].Value
-          if (-not $url -or -not $sha) { throw 'Failed to read pinned FFmpeg constants.' }
+          $manifest = Get-Content src/GoldsrcSoundConverter.Core/Ffmpeg/ffmpeg.manifest.json -Raw | ConvertFrom-Json
+          $url = $manifest.url
+          $sha = $manifest.sha256
+          if (-not $url -or -not $sha) { throw 'Failed to read pinned FFmpeg manifest.' }
           $archive = Join-Path $env:RUNNER_TEMP 'ffmpeg.zip'
           Invoke-WebRequest -Uri $url -OutFile $archive
           $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()

@@ -8,15 +8,14 @@ public sealed record BootstrapProgress(string Stage, double? Percent);
 
 public sealed class FfmpegBootstrapper
 {
-  public const string Version = "9.0.2";
-
-  public const string DownloadUrl =
-    "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip";
-
-  public const string ArchiveSha256 =
-    "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba";
-
+  private static readonly FfmpegManifest Manifest = FfmpegManifestLoader.Load();
   private static readonly HttpClient Http = CreateHttpClient();
+
+  public static string Version => Manifest.Version;
+
+  public static string DownloadUrl => Manifest.Url;
+
+  public static string ArchiveSha256 => Manifest.Sha256;
 
   public FfmpegBootstrapper(string? installDirectory = null)
   {
