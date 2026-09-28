@@ -9,10 +9,12 @@
 
 ## Требования
 
-- Windows 10/11, .NET 10 (Desktop Runtime).
-- Интернет при первом запуске конвертации — программа сама скачает FFmpeg (~80 МБ,
-  gyan.dev, с проверкой SHA-256) в `%LocalAppData%\GoldsrcSoundConverter\ffmpeg`.
-  Можно вместо этого указать свой `ffmpeg.exe` в настройках.
+- Windows 10/11.
+- Интернет при первом запуске конвертации — программа сама скачает FFmpeg
+  (фиксированная версия с проверкой SHA-256) в
+  `%LocalAppData%\GoldsrcSoundConverter\ffmpeg`. Можно вместо этого указать свой
+  `ffmpeg.exe` в настройках.
+- Для сборки из исходников — .NET 10 SDK.
 
 ## Быстрый старт
 
@@ -76,13 +78,48 @@ dotnet test
 Перед публикацией папка `publish/win-x64` полностью очищается, символы отладки
 и папки локализаций не создаются — в релиз попадает только exe и инструкция.
 
-## Структура
+## Архитектура
 
 ```
-src/GoldsrcSoundConverter.Core   — конвертация, FFmpeg, пресеты, волновая форма
-src/GoldsrcSoundConverter.App    — WPF-интерфейс (MVVM)
-tests/GoldsrcSoundConverter.Tests — unit + интеграционные тесты (нужен FFmpeg)
+Core  — бизнес-логика: AudioConverter/BatchConverter/ConversionPlanner,
+        FFmpeg-обвязка, настройки, пресеты, волновая форма. Не зависит от WPF.
+
+App   — WPF и платформенные интеграции: ViewModels, ConversionService,
+        PlaybackController, WpfFilePicker, WindowsFolderLauncher,
+        AudioPreviewService (NAudio), DI-композиция в App.xaml.cs.
+
+Tests — unit-тесты Core и App-слоя на fake-реализациях интерфейсов,
+        интеграционные тесты с реальным FFmpeg.
 ```
 
-Интеграционные тесты используют уже установленный FFmpeg из
-`%LocalAppData%\GoldsrcSoundConverter\ffmpeg` или путь из переменной `GSC_FFMPEG`.
+Правила зависимостей:
+
+- Core не знает про WPF, диалоги, `Application.Current` и не запускает процессы напрямую.
+- ViewModel не создаёт инфраструктуру (`new`), а получает сервисы через конструктор.
+- UI-специфичный код (DWM-заголовок, drag&drop, автоскролл) остаётся в `MainWindow.xaml.cs`.
+
+## Разработка
+
+```powershell
+dotnet restore
+dotnet build
+dotnet test --filter "Category!=Integration"   # unit-тесты
+dotnet test --filter "Category=Integration"    # интеграционные тесты (нужен FFmpeg)
+```
+
+Интеграционные тесты ищут FFmpeg в переменной `GSC_FFMPEG`, затем в
+`%LocalAppData%\GoldsrcSoundConverter\ffmpeg`, затем в `PATH`.
+
+## Политика FFmpeg
+
+Версия FFmpeg зафиксирована константами в `FfmpegBootstrapper`
+(`Version`, `DownloadUrl`, `ArchiveSha256`). Архив скачивается с GitHub-релизов
+gyan.dev и всегда проверяется по SHA-256. Обновление версии — отдельное осознанное
+изменение: version, URL и checksum меняются вместе.
+
+## Непрерывная интеграция
+
+`.github/workflows/ci.yml` на каждый push и pull request выполняет restore,
+Release-сборку и полный прогон тестов (включая интеграционные). CI скачивает ту же
+зафиксированную сборку FFmpeg, проверяет её SHA-256 и передаёт путь через
+`GSC_FFMPEG`.
