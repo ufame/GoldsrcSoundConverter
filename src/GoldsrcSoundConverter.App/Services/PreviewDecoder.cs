@@ -1,6 +1,5 @@
 using System.IO;
-using System.Security.Cryptography;
-using System.Text;
+using GoldsrcSoundConverter.Core.Audio;
 using GoldsrcSoundConverter.Core.Ffmpeg;
 
 namespace GoldsrcSoundConverter.App.Services;
@@ -25,25 +24,63 @@ public static class PreviewDecoder
     var directory = Path.Combine(Path.GetTempPath(), "GoldsrcSoundConverter", "preview");
     Directory.CreateDirectory(directory);
 
-    var key = Convert.ToHexString(
-      SHA1.HashData(Encoding.UTF8.GetBytes(sourcePath.ToLowerInvariant())))[..16];
+    var key = PreviewCache.ComputeKey(sourcePath);
     var target = Path.Combine(directory, key + ".wav");
+    var fingerprintPath = target + ".meta";
 
-    if (File.Exists(target) && File.GetLastWriteTimeUtc(target) >= File.GetLastWriteTimeUtc(sourcePath))
+    if (PreviewCache.IsValid(sourcePath, target, fingerprintPath))
     {
       return target;
     }
 
-    var arguments = FfmpegArguments.BuildDecodeToWav(sourcePath, target, 44100, 2);
-    var result = await FfmpegRunner
-      .RunAsync(ffmpegPath, arguments, cancellationToken: cancellationToken)
-      .ConfigureAwait(false);
-
-    if (!result.Success)
+    var tempPath = Path.Combine(directory, $"{key}.{Guid.NewGuid():N}.tmp");
+    try
     {
-      throw new FfmpegException("Не удалось подготовить предпросмотр.", result.StandardError);
-    }
+      var arguments = FfmpegArguments.BuildDecodeToWav(sourcePath, tempPath, 44100, 2);
+      var result = await FfmpegRunner
+        .RunAsync(ffmpegPath, arguments, cancellationToken: cancellationToken)
+        .ConfigureAwait(false);
 
-    return target;
+      if (!result.Success || !File.Exists(tempPath) || new FileInfo(tempPath).Length == 0)
+      {
+        throw new FfmpegException("Не удалось подготовить предпросмотр.", result.StandardError);
+      }
+
+      File.Move(tempPath, target, overwrite: true);
+      WriteFingerprint(fingerprintPath, PreviewCache.ComputeFingerprint(sourcePath));
+      return target;
+    }
+    finally
+    {
+      TryDelete(tempPath);
+    }
+  }
+
+  private static void WriteFingerprint(string fingerprintPath, string fingerprint)
+  {
+    var tempPath = fingerprintPath + ".tmp";
+    try
+    {
+      File.WriteAllText(tempPath, fingerprint);
+      File.Move(tempPath, fingerprintPath, overwrite: true);
+    }
+    finally
+    {
+      TryDelete(tempPath);
+    }
+  }
+
+  private static void TryDelete(string path)
+  {
+    try
+    {
+      if (File.Exists(path))
+      {
+        File.Delete(path);
+      }
+    }
+    catch
+    {
+    }
   }
 }
