@@ -112,14 +112,67 @@ public sealed class QueueManagerTests : IDisposable
     manager.Add(new[] { CreateFile("a.wav") }, Options());
     var item = manager.Items[0];
 
-    var deadline = DateTime.UtcNow.AddSeconds(3);
-    while (item.Info is null && DateTime.UtcNow < deadline)
-    {
-      await Task.Delay(10);
-    }
+    await WaitUntil(() => item.Info is not null);
 
     Assert.NotNull(item.Info);
     Assert.NotEqual("—", item.TargetSizeText);
+  }
+
+  [Fact]
+  public async Task ProbeResultIsDiscardedWhenItemRemovedBeforeCompletion()
+  {
+    _conversion.ProbeGate = new TaskCompletionSource();
+    using var manager = CreateManager();
+    manager.Add(new[] { CreateFile("a.wav") }, Options());
+    var item = manager.Items[0];
+
+    manager.Remove(item);
+    _conversion.ProbeGate.SetResult();
+
+    await WaitUntil(() => _conversion.ProbeCompleted >= 1);
+    await Task.Delay(50);
+
+    Assert.Null(item.Info);
+  }
+
+  [Fact]
+  public async Task ClearCancelsPendingProbes()
+  {
+    _conversion.ProbeGate = new TaskCompletionSource();
+    using var manager = CreateManager();
+    manager.Add(new[] { CreateFile("a.wav") }, Options());
+
+    manager.Clear();
+
+    await WaitUntil(() => _conversion.ProbeCancellations >= 1);
+    Assert.Empty(manager.Items);
+  }
+
+  [Fact]
+  public async Task DisposeCancelsPendingProbesAndIsIdempotent()
+  {
+    _conversion.ProbeGate = new TaskCompletionSource();
+    using var manager = CreateManager();
+    manager.Add(new[] { CreateFile("a.wav") }, Options());
+
+    manager.Dispose();
+    manager.Dispose();
+
+    await WaitUntil(() => _conversion.ProbeCancellations >= 1);
+  }
+
+  private static async Task WaitUntil(Func<bool> condition, int timeoutMs = 3000)
+  {
+    var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+    while (!condition())
+    {
+      if (DateTime.UtcNow > deadline)
+      {
+        throw new TimeoutException("Условие не выполнено за отведённое время.");
+      }
+
+      await Task.Delay(10);
+    }
   }
 
   private static AudioInfo CreateInfo(string path)

@@ -28,6 +28,14 @@ public sealed class FakeConversionService : IConversionService
 
   public List<ProbeResult> ProbeResults { get; } = new();
 
+  public TaskCompletionSource? ProbeGate { get; set; }
+
+  public int ProbeCalls { get; private set; }
+
+  public int ProbeCompleted { get; private set; }
+
+  public int ProbeCancellations { get; private set; }
+
   public Exception? PrepareException { get; set; }
 
   public WaveformData? Waveform { get; set; }
@@ -61,14 +69,33 @@ public sealed class FakeConversionService : IConversionService
     return Task.FromResult((FfmpegPath!, FfprobePath!));
   }
 
-  public Task<ProbeResult?> TryProbeAsync(Guid id, string path, CancellationToken cancellationToken = default)
+  public async Task<ProbeResult?> TryProbeAsync(
+    Guid id,
+    string path,
+    CancellationToken cancellationToken = default)
   {
+    ProbeCalls++;
+
     if (!FfmpegAvailable)
     {
-      return Task.FromResult<ProbeResult?>(null);
+      return null;
     }
 
-    return Task.FromResult<ProbeResult?>(new ProbeResult(id, new AudioInfo(
+    if (ProbeGate is not null)
+    {
+      try
+      {
+        await ProbeGate.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+      }
+      catch (OperationCanceledException)
+      {
+        ProbeCancellations++;
+        throw;
+      }
+    }
+
+    ProbeCompleted++;
+    return new ProbeResult(id, new AudioInfo(
       path,
       "wav",
       "pcm_s16le",
@@ -76,7 +103,7 @@ public sealed class FakeConversionService : IConversionService
       22050,
       1,
       352800,
-      100)));
+      100));
   }
 
   public Task<WaveformData?> TryExtractWaveformAsync(string path, CancellationToken cancellationToken = default)

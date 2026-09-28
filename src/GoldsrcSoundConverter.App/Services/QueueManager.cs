@@ -11,6 +11,9 @@ public sealed class QueueManager : IQueueManager
   private readonly IConversionService _conversion;
   private readonly ILogBuffer _log;
 
+  private CancellationTokenSource _probeCts = new();
+  private bool _disposed;
+
   public QueueManager(IConversionService conversion, ILogBuffer log)
   {
     _conversion = conversion;
@@ -36,7 +39,7 @@ public sealed class QueueManager : IQueueManager
       var item = new QueueItemViewModel(candidate.FilePath, candidate.SourceRoot);
       Items.Add(item);
       item.UpdateTargetSize(options);
-      _ = ProbeItemAsync(item, options);
+      _ = ProbeItemAsync(item, options, _probeCts.Token);
       added++;
     }
 
@@ -50,6 +53,11 @@ public sealed class QueueManager : IQueueManager
 
   public void Clear()
   {
+    if (!_disposed)
+    {
+      CancelPendingProbes();
+    }
+
     Items.Clear();
   }
 
@@ -61,7 +69,31 @@ public sealed class QueueManager : IQueueManager
     }
   }
 
-  private async Task ProbeItemAsync(QueueItemViewModel item, ConversionOptions options)
+  public void Dispose()
+  {
+    if (_disposed)
+    {
+      return;
+    }
+
+    CancelPendingProbes();
+    _disposed = true;
+    _probeCts.Dispose();
+    GC.SuppressFinalize(this);
+  }
+
+  private void CancelPendingProbes()
+  {
+    var previous = _probeCts;
+    _probeCts = new CancellationTokenSource();
+    previous.Cancel();
+    previous.Dispose();
+  }
+
+  private async Task ProbeItemAsync(
+    QueueItemViewModel item,
+    ConversionOptions options,
+    CancellationToken cancellationToken)
   {
     if (item.Info is not null)
     {
@@ -70,8 +102,11 @@ public sealed class QueueManager : IQueueManager
 
     try
     {
-      var result = await _conversion.TryProbeAsync(item.Id, item.SourcePath).ConfigureAwait(true);
-      if (result is null)
+      var result = await _conversion
+        .TryProbeAsync(item.Id, item.SourcePath, cancellationToken)
+        .ConfigureAwait(true);
+
+      if (result is null || cancellationToken.IsCancellationRequested || !Items.Contains(item))
       {
         return;
       }
@@ -79,9 +114,15 @@ public sealed class QueueManager : IQueueManager
       item.Info = result.Info;
       item.UpdateTargetSize(options);
     }
+    catch (OperationCanceledException)
+    {
+    }
     catch (Exception ex)
     {
-      _log.Add($"Не удалось проанализировать {item.FileName}: {ex.Message}");
+      if (!cancellationToken.IsCancellationRequested)
+      {
+        _log.Add($"Не удалось проанализировать {item.FileName}: {ex.Message}");
+      }
     }
   }
 }

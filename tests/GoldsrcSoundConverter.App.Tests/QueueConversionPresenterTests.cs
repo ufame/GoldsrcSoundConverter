@@ -5,7 +5,7 @@ using GoldsrcSoundConverter.Tests.Fakes;
 
 namespace GoldsrcSoundConverter.Tests;
 
-public sealed class QueueConversionPresenterTests
+public sealed class QueueConversionPresenterTests : IDisposable
 {
   private readonly FakeConversionService _conversion = new();
   private readonly LogBuffer _log = new();
@@ -16,6 +16,11 @@ public sealed class QueueConversionPresenterTests
   {
     _queue = new QueueManager(_conversion, _log);
     _presenter = new QueueConversionPresenter(_queue);
+  }
+
+  public void Dispose()
+  {
+    _queue.Dispose();
   }
 
   private static ConversionOptions Options()

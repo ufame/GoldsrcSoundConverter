@@ -4,7 +4,7 @@ using GoldsrcSoundConverter.Core.Models;
 
 namespace GoldsrcSoundConverter.App.Services;
 
-public interface IQueueManager
+public interface IQueueManager : IDisposable
 {
   ObservableCollection<QueueItemViewModel> Items { get; }
 
