@@ -47,8 +47,18 @@ public sealed class FfmpegBootstrapper
 
   public static bool TryResolveCustom(string? customPath, out string ffmpegPath, out string ffprobePath)
   {
+    return TryResolveCustom(customPath, out ffmpegPath, out ffprobePath, out _);
+  }
+
+  public static bool TryResolveCustom(
+    string? customPath,
+    out string ffmpegPath,
+    out string ffprobePath,
+    out string? error)
+  {
     ffmpegPath = string.Empty;
     ffprobePath = string.Empty;
+    error = null;
 
     if (string.IsNullOrWhiteSpace(customPath))
     {
@@ -67,9 +77,11 @@ public sealed class FfmpegBootstrapper
 
     if (directory is null)
     {
+      error = $"Указанный путь к FFmpeg не найден: {customPath}";
       return false;
     }
 
+    string? missingFfprobe = null;
     foreach (var candidate in new[] { directory, Path.Combine(directory, "bin") })
     {
       var ffmpeg = Path.Combine(candidate, "ffmpeg.exe");
@@ -79,11 +91,18 @@ public sealed class FfmpegBootstrapper
       }
 
       var ffprobe = Path.Combine(candidate, "ffprobe.exe");
+      if (!File.Exists(ffprobe))
+      {
+        missingFfprobe ??= $"Рядом с ffmpeg.exe не найден ffprobe.exe: {candidate}";
+        continue;
+      }
+
       ffmpegPath = ffmpeg;
-      ffprobePath = File.Exists(ffprobe) ? ffprobe : ffmpeg;
+      ffprobePath = ffprobe;
       return true;
     }
 
+    error = missingFfprobe ?? $"В указанной папке не найден ffmpeg.exe: {directory}";
     return false;
   }
 
@@ -93,9 +112,14 @@ public sealed class FfmpegBootstrapper
     Action<string>? log,
     CancellationToken cancellationToken = default)
   {
-    if (TryResolveCustom(customPath, out var customFfmpeg, out var customFfprobe))
+    if (TryResolveCustom(customPath, out var customFfmpeg, out var customFfprobe, out var customError))
     {
       return (customFfmpeg, customFfprobe);
+    }
+
+    if (customError is not null)
+    {
+      throw new InvalidOperationException(customError);
     }
 
     if (TryResolve(out var installedFfmpeg, out var installedFfprobe))
