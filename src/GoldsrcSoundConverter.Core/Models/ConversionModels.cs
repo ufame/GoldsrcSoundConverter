@@ -16,7 +16,10 @@ public sealed record ConversionJob(
   string SourcePath,
   string? SourceRoot,
   TimeSpan? TrimStart,
-  TimeSpan? TrimEnd);
+  TimeSpan? TrimEnd)
+{
+  public string? OutputPath { get; init; }
+}
 
 public sealed record ConversionProgress(
   int Index,

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using GoldsrcSoundConverter.Core.Audio;
 using GoldsrcSoundConverter.Core.Ffmpeg;
+using GoldsrcSoundConverter.Core.Files;
 using GoldsrcSoundConverter.Core.Models;
 
 namespace GoldsrcSoundConverter.Tests;
@@ -120,12 +121,17 @@ public sealed class FfmpegIntegrationTests : IDisposable
       LowercaseNames = true,
     };
 
-    var job = new ConversionJob(
-      0,
-      source,
-      null,
-      TimeSpan.FromSeconds(1),
-      TimeSpan.FromSeconds(2));
+    var job = new ConversionPlanner().Plan(
+      new[]
+      {
+        new ConversionJob(
+          0,
+          source,
+          null,
+          TimeSpan.FromSeconds(1),
+          TimeSpan.FromSeconds(2)),
+      },
+      options)[0];
 
     var outcome = await new AudioConverter(_ffmpeg!, _ffprobe!).ConvertAsync(job, options, null);
 
@@ -227,8 +233,12 @@ public sealed class FfmpegIntegrationTests : IDisposable
 
   private async Task<ConversionOutcome> ConvertAsync(string source, ConversionOptions options)
   {
+    var job = new ConversionPlanner().Plan(
+      new[] { new ConversionJob(0, source, null, null, null) },
+      options)[0];
+
     var converter = new AudioConverter(_ffmpeg!, _ffprobe!);
-    return await converter.ConvertAsync(new ConversionJob(0, source, null, null, null), options, null);
+    return await converter.ConvertAsync(job, options, null);
   }
 
   private async Task<string> GenerateSineAsync(string name, double seconds, string? volume = null)

@@ -363,11 +363,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
       }
 
+      var plannedJobs = new ConversionPlanner().Plan(jobs, options);
       var progress = new Progress<ConversionProgress>(ApplyProgress);
-      StatusText = $"Конвертация: {jobs.Count} файл(ов)…";
+      StatusText = $"Конвертация: {plannedJobs.Count} файл(ов)…";
 
       var outcomes = await new BatchConverter(ffmpeg, ffprobe)
-        .RunAsync(jobs, options, knownInfos, progress, AppendLog, cancellationToken)
+        .RunAsync(plannedJobs, options, knownInfos, progress, AppendLog, cancellationToken)
         .ConfigureAwait(true);
 
       var completed = 0;
@@ -519,12 +520,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
       options.Parallelism = 1;
       Directory.CreateDirectory(options.OutputDirectory);
 
-      var job = new ConversionJob(
-        0,
-        item.SourcePath,
-        null,
-        item.HasTrim ? TimeSpan.FromSeconds(item.TrimStartSeconds) : null,
-        item.HasTrim ? TimeSpan.FromSeconds(item.TrimEndSeconds) : null);
+      var job = new ConversionPlanner().Plan(
+        new[]
+        {
+          new ConversionJob(
+            0,
+            item.SourcePath,
+            null,
+            item.HasTrim ? TimeSpan.FromSeconds(item.TrimStartSeconds) : null,
+            item.HasTrim ? TimeSpan.FromSeconds(item.TrimEndSeconds) : null),
+        },
+        options)[0];
 
       var outcome = await new AudioConverter(ffmpeg, ffprobe)
         .ConvertAsync(job, options, item.Info, null, AppendLog)

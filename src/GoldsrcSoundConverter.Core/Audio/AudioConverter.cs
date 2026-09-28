@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using GoldsrcSoundConverter.Core.Ffmpeg;
-using GoldsrcSoundConverter.Core.Files;
 using GoldsrcSoundConverter.Core.Models;
 
 namespace GoldsrcSoundConverter.Core.Audio;
@@ -31,7 +30,7 @@ public sealed class AudioConverter
         .ProbeAsync(_ffprobePath, job.SourcePath, cancellationToken)
         .ConfigureAwait(false);
 
-      var outputPath = OutputPathResolver.Resolve(job.SourcePath, job.SourceRoot, options);
+      var outputPath = job.OutputPath;
       if (outputPath is null)
       {
         log?.Invoke($"[{Path.GetFileName(job.SourcePath)}] пропущен: файл уже существует");
