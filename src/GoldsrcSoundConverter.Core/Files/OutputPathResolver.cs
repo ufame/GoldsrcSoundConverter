@@ -41,14 +41,25 @@ public static class OutputPathResolver
 
     var sourceDirectory = Path.GetDirectoryName(Path.GetFullPath(sourcePath));
     var root = Path.GetFullPath(sourceRoot);
-    if (sourceDirectory is null || !sourceDirectory.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+    if (sourceDirectory is null)
     {
       return string.Empty;
     }
 
-    var relative = sourceDirectory[root.Length..]
-      .TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    var relative = Path.GetRelativePath(root, sourceDirectory);
+    if (relative == "." || IsOutsideRoot(relative))
+    {
+      return string.Empty;
+    }
+
     return relative;
+  }
+
+  private static bool IsOutsideRoot(string relativePath)
+  {
+    return relativePath == ".."
+      || relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+      || relativePath.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal);
   }
 
   private static string FindFreePath(string directory, string baseName, string extension, string sourcePath)
