@@ -58,7 +58,7 @@ public sealed class ConversionRequestFactoryTests
   [Fact]
   public void CreateWorkItemMapsItemState()
   {
-    var item = new QueueItemViewModel(0, @"C:\in\clip.ogg", @"C:\in")
+    var item = new QueueItemViewModel(@"C:\in\clip.ogg", @"C:\in")
     {
       TrimStartSeconds = 1,
       TrimEndSeconds = 4,
@@ -78,7 +78,7 @@ public sealed class ConversionRequestFactoryTests
   [Fact]
   public void CreateWorkItemsSkipsTrimsWhenNotSet()
   {
-    var item = new QueueItemViewModel(0, @"C:\in\clip.wav", null);
+    var item = new QueueItemViewModel(@"C:\in\clip.wav", null);
 
     var workItems = new ConversionRequestFactory().CreateWorkItems(new[] { item });
 

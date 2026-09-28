@@ -53,20 +53,21 @@ public sealed class MainViewModelTests : IDisposable
   }
 
   [Fact]
-  public void RemoveSelectedReindexesAndKeepsStableIds()
+  public void RemoveSelectedKeepsRemainingItemInstance()
   {
     var first = CreateFile("a.wav");
     var second = CreateFile("b.wav");
     var vm = CreateViewModel();
     vm.AddPaths(new[] { first, second });
-    var secondId = vm.Items[1].Id;
+    var secondItem = vm.Items[1];
+    var secondId = secondItem.Id;
 
     vm.SelectedItem = vm.Items[0];
     vm.RemoveSelectedCommand.Execute(null);
 
     var remaining = Assert.Single(vm.Items);
+    Assert.Same(secondItem, remaining);
     Assert.Equal(second, remaining.SourcePath);
-    Assert.Equal(0, remaining.Index);
     Assert.Equal(secondId, remaining.Id);
   }
 

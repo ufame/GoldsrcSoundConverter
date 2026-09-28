@@ -33,7 +33,7 @@ public sealed class QueueManager : IQueueManager
         continue;
       }
 
-      var item = new QueueItemViewModel(Items.Count, candidate.FilePath, candidate.SourceRoot);
+      var item = new QueueItemViewModel(candidate.FilePath, candidate.SourceRoot);
       Items.Add(item);
       item.UpdateTargetSize(options);
       _ = ProbeItemAsync(item, options);
@@ -45,12 +45,7 @@ public sealed class QueueManager : IQueueManager
 
   public void Remove(QueueItemViewModel item)
   {
-    if (!Items.Remove(item))
-    {
-      return;
-    }
-
-    Reindex();
+    Items.Remove(item);
   }
 
   public void Clear()
@@ -63,28 +58,6 @@ public sealed class QueueManager : IQueueManager
     foreach (var item in Items)
     {
       item.UpdateTargetSize(options);
-    }
-  }
-
-  private void Reindex()
-  {
-    for (var i = 0; i < Items.Count; i++)
-    {
-      var replacement = new QueueItemViewModel(i, Items[i].SourcePath, Items[i].SourceRoot)
-      {
-        Id = Items[i].Id,
-        Info = Items[i].Info,
-        Waveform = Items[i].Waveform,
-        TrimStartSeconds = Items[i].TrimStartSeconds,
-        TrimEndSeconds = Items[i].TrimEndSeconds,
-        Stage = Items[i].Stage,
-        Progress = Items[i].Progress,
-        OutputPath = Items[i].OutputPath,
-        Error = Items[i].Error,
-        TargetSizeText = Items[i].TargetSizeText,
-      };
-
-      Items[i] = replacement;
     }
   }
 

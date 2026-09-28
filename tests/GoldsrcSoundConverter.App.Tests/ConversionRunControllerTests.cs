@@ -33,16 +33,16 @@ public sealed class ConversionRunControllerTests : IDisposable
     };
   }
 
-  private static QueueItemViewModel Item(string name, int index)
+  private static QueueItemViewModel Item(string name)
   {
-    return new QueueItemViewModel(index, name, null);
+    return new QueueItemViewModel(name, null);
   }
 
   [Fact]
   public async Task SuccessOutcomesAreAppliedAndCounted()
   {
     using var controller = CreateController();
-    var items = new[] { Item("a.wav", 0), Item("b.wav", 1) };
+    var items = new[] { Item("a.wav"), Item("b.wav") };
 
     var summary = await controller.RunAsync(items, Options());
 
@@ -65,7 +65,7 @@ public sealed class ConversionRunControllerTests : IDisposable
       ? new ConversionOutcome(item.Id, false, false, null, "boom", null)
       : new ConversionOutcome(item.Id, true, true, null, null, null);
     using var controller = CreateController();
-    var items = new[] { Item("bad.wav", 0), Item("skip.wav", 1) };
+    var items = new[] { Item("bad.wav"), Item("skip.wav") };
 
     var summary = await controller.RunAsync(items, Options());
 
@@ -81,7 +81,7 @@ public sealed class ConversionRunControllerTests : IDisposable
   public async Task ProbeResultsUpdateItems()
   {
     using var controller = CreateController();
-    var items = new[] { Item("a.wav", 0) };
+    var items = new[] { Item("a.wav") };
     _conversion.ProbeResults.Add(new ProbeResult(items[0].Id, new AudioInfo(
       items[0].SourcePath,
       "wav",
@@ -108,7 +108,7 @@ public sealed class ConversionRunControllerTests : IDisposable
   public async Task OverallProgressIsReported()
   {
     using var controller = CreateController();
-    var items = new[] { Item("a.wav", 0) };
+    var items = new[] { Item("a.wav") };
     var values = new List<double>();
 
     await controller.RunAsync(items, Options(), value => values.Add(value));
@@ -127,7 +127,7 @@ public sealed class ConversionRunControllerTests : IDisposable
   {
     _conversion.ConversionGate = new TaskCompletionSource();
     using var controller = CreateController();
-    var items = new[] { Item("a.wav", 0) };
+    var items = new[] { Item("a.wav") };
 
     var runTask = controller.RunAsync(items, Options());
 
@@ -152,7 +152,7 @@ public sealed class ConversionRunControllerTests : IDisposable
     var states = new List<bool>();
     controller.BusyChanged += (_, _) => states.Add(controller.IsBusy);
 
-    await controller.RunAsync(new[] { Item("a.wav", 0) }, Options());
+    await controller.RunAsync(new[] { Item("a.wav") }, Options());
 
     Assert.Equal(ExpectedBusyStates, states);
     Assert.False(controller.IsBusy);

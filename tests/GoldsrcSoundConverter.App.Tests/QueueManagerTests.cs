@@ -64,19 +64,20 @@ public sealed class QueueManagerTests : IDisposable
   }
 
   [Fact]
-  public void RemoveReindexesAndKeepsStableIds()
+  public void RemoveKeepsRemainingItemInstances()
   {
     var manager = CreateManager();
     var first = CreateFile("a.wav");
     var second = CreateFile("b.wav");
     manager.Add(new[] { first, second }, Options());
-    var secondId = manager.Items[1].Id;
+    var secondItem = manager.Items[1];
+    var secondId = secondItem.Id;
 
     manager.Remove(manager.Items[0]);
 
     var remaining = Assert.Single(manager.Items);
+    Assert.Same(secondItem, remaining);
     Assert.Equal(second, remaining.SourcePath);
-    Assert.Equal(0, remaining.Index);
     Assert.Equal(secondId, remaining.Id);
   }
 

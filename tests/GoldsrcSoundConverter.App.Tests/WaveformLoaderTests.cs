@@ -21,7 +21,7 @@ public sealed class WaveformLoaderTests
 
   private static QueueItemViewModel Item()
   {
-    return new QueueItemViewModel(0, @"C:\in\clip.ogg", null);
+    return new QueueItemViewModel(@"C:\in\clip.ogg", null);
   }
 
   private static ConversionOptions Options()

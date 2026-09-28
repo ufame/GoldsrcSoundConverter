@@ -8,14 +8,11 @@ namespace GoldsrcSoundConverter.App.ViewModels;
 
 public partial class QueueItemViewModel : ObservableObject
 {
-  public QueueItemViewModel(int index, string sourcePath, string? sourceRoot)
+  public QueueItemViewModel(string sourcePath, string? sourceRoot)
   {
-    Index = index;
     SourcePath = sourcePath;
     SourceRoot = sourceRoot;
   }
-
-  public int Index { get; }
 
   public Guid Id { get; init; } = Guid.NewGuid();
 
