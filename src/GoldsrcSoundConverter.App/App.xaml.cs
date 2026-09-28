@@ -1,30 +1,37 @@
 ﻿using System.Windows;
 using GoldsrcSoundConverter.App.Composition;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace GoldsrcSoundConverter.App;
 
 public partial class App : Application
 {
-  private ServiceProvider? _services;
+  private IHost? _host;
 
   protected override void OnStartup(StartupEventArgs e)
   {
     base.OnStartup(e);
 
-    var services = new ServiceCollection();
-    services.AddGoldsrcSoundConverter();
+    var builder = Host.CreateApplicationBuilder();
+    builder.Services.AddGoldsrcSoundConverter();
 
-    _services = services.BuildServiceProvider();
+    _host = builder.Build();
+    _host.Start();
 
-    var window = _services.GetRequiredService<MainWindow>();
+    var window = _host.Services.GetRequiredService<MainWindow>();
     MainWindow = window;
     window.Show();
   }
 
   protected override void OnExit(ExitEventArgs e)
   {
-    _services?.Dispose();
+    if (_host is not null)
+    {
+      _host.StopAsync().GetAwaiter().GetResult();
+      _host.Dispose();
+    }
+
     base.OnExit(e);
   }
 }
