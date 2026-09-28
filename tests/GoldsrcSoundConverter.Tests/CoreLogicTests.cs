@@ -67,6 +67,45 @@ public sealed class Cs16PresetsTests
 
     Assert.Null(Cs16Presets.Match(options));
   }
+
+  [Fact]
+  public void ByIdReturnsNullForUnknownId()
+  {
+    Assert.Null(Cs16Presets.ById("does-not-exist"));
+    Assert.Null(Cs16Presets.ById(null));
+  }
+
+  [Fact]
+  public void CustomPresetIsAvailableForEveryFormat()
+  {
+    foreach (var format in new[] { OutputAudioFormat.Wav, OutputAudioFormat.Mp3 })
+    {
+      var preset = Cs16Presets.ForFormat(format).Single(p => p.IsCustom);
+      Assert.Equal(Cs16Presets.CustomId, preset.Id);
+    }
+  }
+
+  [Fact]
+  public void Mp3MatchRequiresMatchingBitrate()
+  {
+    var options = new ConversionOptions
+    {
+      Format = OutputAudioFormat.Mp3,
+      SampleRate = 44100,
+      Channels = TargetChannels.Stereo,
+      BitDepth = TargetBitDepth.Sixteen,
+      Mp3BitrateKbps = 192,
+    };
+
+    Assert.Equal("mp3-music-hq", Cs16Presets.Match(options)?.Id);
+  }
+
+  [Fact]
+  public void DefaultForFormatPicksExpectedPreset()
+  {
+    Assert.Equal("wav-sound", Cs16Presets.DefaultFor(OutputAudioFormat.Wav).Id);
+    Assert.Equal("mp3-music", Cs16Presets.DefaultFor(OutputAudioFormat.Mp3).Id);
+  }
 }
 
 public sealed class WaveformDataTests
