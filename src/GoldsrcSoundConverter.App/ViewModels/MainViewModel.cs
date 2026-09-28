@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GoldsrcSoundConverter.App.Infrastructure.FilePicker;
+using GoldsrcSoundConverter.App.Infrastructure.Shell;
 using GoldsrcSoundConverter.App.Services;
 using GoldsrcSoundConverter.Core.Audio;
 using GoldsrcSoundConverter.Core.Ffmpeg;
@@ -19,6 +20,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 {
   private readonly ISettingsStore _settingsStore;
   private readonly IFilePicker _filePicker;
+  private readonly IFolderLauncher _folderLauncher;
   private readonly AudioPreviewService _preview = new();
   private readonly SemaphoreSlim _ffmpegLock = new(1, 1);
   private readonly SemaphoreSlim _probeGate = new(3, 3);
@@ -31,10 +33,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private bool _playSelection;
   private double? _stopAtSeconds;
 
-  public MainViewModel(ISettingsStore settingsStore, IFilePicker filePicker)
+  public MainViewModel(ISettingsStore settingsStore, IFilePicker filePicker, IFolderLauncher folderLauncher)
   {
     _settingsStore = settingsStore;
     _filePicker = filePicker;
+    _folderLauncher = folderLauncher;
     Items.CollectionChanged += (_, _) => StartCommand.NotifyCanExecuteChanged();
     _preview.PlaybackStopped += OnPlaybackStopped;
 
@@ -636,11 +639,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return;
       }
 
-      Process.Start(new ProcessStartInfo
-      {
-        FileName = OutputDirectory,
-        UseShellExecute = true,
-      });
+      _folderLauncher.Open(OutputDirectory);
     }
     catch (Exception ex)
     {
