@@ -12,6 +12,14 @@ public sealed class FfmpegBootstrapperTests : IDisposable
   }
 
   [Fact]
+  public void PinnedReleaseConstantsAreConsistent()
+  {
+    Assert.Contains(FfmpegBootstrapper.Version, FfmpegBootstrapper.DownloadUrl);
+    Assert.EndsWith(".zip", FfmpegBootstrapper.DownloadUrl);
+    Assert.Matches("^[0-9a-f]{64}$", FfmpegBootstrapper.ArchiveSha256);
+  }
+
+  [Fact]
   public void ResolvesCustomDirectoryWithBothBinaries()
   {
     CreateBinary("ffmpeg.exe");
