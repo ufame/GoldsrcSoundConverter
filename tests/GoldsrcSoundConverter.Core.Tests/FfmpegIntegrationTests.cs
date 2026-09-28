@@ -27,13 +27,10 @@ public sealed class FfmpegIntegrationTests : IDisposable
     _temp.Dispose();
   }
 
-  [Fact]
+  [SkippableFact]
   public async Task ConvertsToCs16WavMono22050()
   {
-    if (!IsAvailable())
-    {
-      return;
-    }
+    Skip.IfNot(IsAvailable(), "FFmpeg не найден — интеграционный тест пропущен.");
 
     var source = await GenerateSineAsync("sine", 1.0);
     var options = new ConversionOptions
@@ -63,13 +60,10 @@ public sealed class FfmpegIntegrationTests : IDisposable
     Assert.InRange(info.Duration.TotalSeconds, 0.95, 1.05);
   }
 
-  [Fact]
+  [SkippableFact]
   public async Task ConvertsToCbrMp3WithoutId3()
   {
-    if (!IsAvailable())
-    {
-      return;
-    }
+    Skip.IfNot(IsAvailable(), "FFmpeg не найден — интеграционный тест пропущен.");
 
     var source = await GenerateSineAsync("music", 1.0);
     var options = new ConversionOptions
@@ -104,13 +98,10 @@ public sealed class FfmpegIntegrationTests : IDisposable
     Assert.InRange(info.Duration.TotalSeconds, 0.9, 1.1);
   }
 
-  [Fact]
+  [SkippableFact]
   public async Task TrimsToSelectedRange()
   {
-    if (!IsAvailable())
-    {
-      return;
-    }
+    Skip.IfNot(IsAvailable(), "FFmpeg не найден — интеграционный тест пропущен.");
 
     var source = await GenerateSineAsync("full", 3.0);
     var options = new ConversionOptions
@@ -142,13 +133,10 @@ public sealed class FfmpegIntegrationTests : IDisposable
     Assert.InRange(info.Duration.TotalSeconds, 0.9, 1.1);
   }
 
-  [Fact]
+  [SkippableFact]
   public async Task NormalizesQuietSource()
   {
-    if (!IsAvailable())
-    {
-      return;
-    }
+    Skip.IfNot(IsAvailable(), "FFmpeg не найден — интеграционный тест пропущен.");
 
     var source = await GenerateSineAsync("quiet", 1.0);
     var sourceVolume = await MeasureMaxVolumeDbAsync(source);
@@ -172,13 +160,10 @@ public sealed class FfmpegIntegrationTests : IDisposable
     Assert.InRange(outputVolume, -1.5, 0.0);
   }
 
-  [Fact]
+  [SkippableFact]
   public async Task ConvertsOggToMp3()
   {
-    if (!IsAvailable())
-    {
-      return;
-    }
+    Skip.IfNot(IsAvailable(), "FFmpeg не найден — интеграционный тест пропущен.");
 
     var sine = await GenerateSineAsync("source", 1.0);
     var ogg = Path.Combine(_temp.Path, "clip.ogg");
@@ -211,13 +196,10 @@ public sealed class FfmpegIntegrationTests : IDisposable
     Assert.InRange(info.Duration.TotalSeconds, 0.9, 1.1);
   }
 
-  [Fact]
+  [SkippableFact]
   public async Task ExtractsWaveformData()
   {
-    if (!IsAvailable())
-    {
-      return;
-    }
+    Skip.IfNot(IsAvailable(), "FFmpeg не найден — интеграционный тест пропущен.");
 
     var source = await GenerateSineAsync("wave", 1.0);
     var waveform = await WaveformExtractor.ExtractAsync(_runner, _ffmpeg!, source);
@@ -228,13 +210,10 @@ public sealed class FfmpegIntegrationTests : IDisposable
     Assert.True(waveform.Mins.Min() < -0.05f);
   }
 
-  [Fact]
+  [SkippableFact]
   public async Task CancelsRunningConversion()
   {
-    if (!IsAvailable())
-    {
-      return;
-    }
+    Skip.IfNot(IsAvailable(), "FFmpeg не найден — интеграционный тест пропущен.");
 
     var source = await GenerateSineAsync("cancel", 60.0);
     var options = new ConversionOptions
