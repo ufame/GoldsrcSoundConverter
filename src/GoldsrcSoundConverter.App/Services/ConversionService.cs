@@ -77,7 +77,7 @@ public sealed class ConversionService : IConversionService
       }
 
       var result = await _bootstrapper
-        .EnsureAsync(_customFfmpegPath, progress, log, cancellationToken)
+        .EnsureAsync(_customFfmpegPath, progress, MarshalLog(log), cancellationToken)
         .ConfigureAwait(false);
 
       _ffmpegPath = result.Ffmpeg;
@@ -128,6 +128,41 @@ public sealed class ConversionService : IConversionService
       .ConfigureAwait(false);
   }
 
+  public async Task<string> PreparePlayableAsync(
+    string sourcePath,
+    IProgress<BootstrapProgress>? bootstrapProgress,
+    Action<string>? log,
+    CancellationToken cancellationToken = default)
+  {
+    var (ffmpeg, _) = await EnsureFfmpegAsync(bootstrapProgress, log, cancellationToken)
+      .ConfigureAwait(false);
+
+    return await PreviewDecoder
+      .EnsurePlayableAsync(_processRunner, ffmpeg, sourcePath, cancellationToken)
+      .ConfigureAwait(false);
+  }
+
+  public async Task<ConversionOutcome> ConvertSingleAsync(
+    ConversionWorkItem item,
+    ConversionOptions options,
+    IProgress<BootstrapProgress>? bootstrapProgress,
+    Action<string>? log,
+    CancellationToken cancellationToken = default)
+  {
+    options.Validate();
+
+    var (ffmpeg, ffprobe) = await EnsureFfmpegAsync(bootstrapProgress, log, cancellationToken)
+      .ConfigureAwait(false);
+
+    var job = new ConversionJob(item.Id, item.SourcePath, item.SourceRoot, item.TrimStart, item.TrimEnd);
+    var planned = new ConversionPlanner().Plan(new[] { job }, options)[0];
+    var converter = new AudioConverter(_processRunner, ffmpeg, ffprobe);
+
+    return await converter
+      .ConvertAsync(planned, options, item.KnownInfo, null, MarshalLog(log), cancellationToken)
+      .ConfigureAwait(false);
+  }
+
   public async Task<ConversionBatchResult> ConvertAsync(
     IReadOnlyList<ConversionWorkItem> workItems,
     ConversionOptions options,
@@ -139,10 +174,11 @@ public sealed class ConversionService : IConversionService
   {
     options.Validate();
 
-    var (ffmpeg, ffprobe) = await EnsureFfmpegAsync(bootstrapProgress, log, cancellationToken)
+    var uiLog = MarshalLog(log);
+    var (ffmpeg, ffprobe) = await EnsureFfmpegAsync(bootstrapProgress, uiLog, cancellationToken)
       .ConfigureAwait(false);
 
-    var knownInfos = await ProbeMissingAsync(workItems, ffprobe, probeProgress, log, cancellationToken)
+    var knownInfos = await ProbeMissingAsync(workItems, ffprobe, probeProgress, uiLog, cancellationToken)
       .ConfigureAwait(false);
 
     var jobs = workItems
@@ -157,10 +193,21 @@ public sealed class ConversionService : IConversionService
     var planned = new ConversionPlanner().Plan(jobs, options);
     var converter = new AudioConverter(_processRunner, ffmpeg, ffprobe);
     var outcomes = await new BatchConverter(converter)
-      .RunAsync(planned, options, knownInfos, progress, log, cancellationToken)
+      .RunAsync(planned, options, knownInfos, progress, uiLog, cancellationToken)
       .ConfigureAwait(false);
 
     return new ConversionBatchResult(outcomes, ffmpeg, ffprobe);
+  }
+
+  private static Action<string>? MarshalLog(Action<string>? log)
+  {
+    if (log is null)
+    {
+      return null;
+    }
+
+    IProgress<string> progress = new Progress<string>(log);
+    return progress.Report;
   }
 
   private async Task<IReadOnlyDictionary<Guid, AudioInfo>> ProbeMissingAsync(

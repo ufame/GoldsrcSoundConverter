@@ -1,7 +1,5 @@
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Windows;
-using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GoldsrcSoundConverter.App.Infrastructure.FilePicker;
@@ -20,42 +18,31 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private readonly ISettingsStore _settingsStore;
   private readonly IFilePicker _filePicker;
   private readonly IFolderLauncher _folderLauncher;
-  private readonly IProcessRunner _processRunner;
   private readonly IConversionService _conversionService;
-  private readonly AudioPreviewService _preview = new();
-  private readonly DispatcherTimer _timer;
+  private readonly IPlaybackController _playback;
 
   private CancellationTokenSource? _conversionCts;
   private bool _applyingPreset;
-  private bool _playSelection;
-  private double? _stopAtSeconds;
 
   public MainViewModel(
     ISettingsStore settingsStore,
     IFilePicker filePicker,
     IFolderLauncher folderLauncher,
-    IProcessRunner processRunner,
-    IConversionService conversionService)
+    IConversionService conversionService,
+    IPlaybackController playback)
   {
     _settingsStore = settingsStore;
     _filePicker = filePicker;
     _folderLauncher = folderLauncher;
-    _processRunner = processRunner;
     _conversionService = conversionService;
+    _playback = playback;
     Items.CollectionChanged += (_, _) => StartCommand.NotifyCanExecuteChanged();
-    _preview.PlaybackStopped += OnPlaybackStopped;
+    _playback.PositionChanged += OnPlaybackPositionChanged;
 
     var settings = _settingsStore.Load();
     InitialWindowWidth = settings.WindowWidth > 400 ? settings.WindowWidth : 1400;
     InitialWindowHeight = settings.WindowHeight > 300 ? settings.WindowHeight : 900;
     ApplySettings(settings);
-
-    _timer = new DispatcherTimer(DispatcherPriority.Background)
-    {
-      Interval = TimeSpan.FromMilliseconds(60),
-    };
-    _timer.Tick += (_, _) => Tick();
-    _timer.Start();
 
     UpdateFfmpegStatus();
     AppendLog("Готово к работе. Перетащите файлы в окно или нажмите «Добавить файлы».");
@@ -215,8 +202,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   public void Dispose()
   {
-    _timer.Stop();
-    _preview.Dispose();
     _conversionCts?.Dispose();
   }
 
@@ -460,22 +445,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
       return;
     }
 
-    _playSelection = false;
-    _stopAtSeconds = null;
-    _preview.Play();
+    _playback.Play();
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private void Pause()
   {
-    _preview.Pause();
+    _playback.Pause();
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private void Stop()
   {
-    _preview.Stop();
-    _stopAtSeconds = null;
+    _playback.Stop();
     PlaybackPositionSeconds = 0;
   }
 
@@ -499,10 +481,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
       return;
     }
 
-    _preview.Position = TimeSpan.FromSeconds(item.TrimStartSeconds);
-    _stopAtSeconds = item.TrimEndSeconds;
-    _playSelection = true;
-    _preview.Play();
+    _playback.PlaySelection(item.TrimStartSeconds, item.TrimEndSeconds);
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
@@ -517,13 +496,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     try
     {
       StatusText = "Рендер результата…";
-      _preview.Unload();
-      await _conversionService
-        .EnsureFfmpegAsync(new Progress<BootstrapProgress>(ApplyBootstrapProgress), AppendLog, CancellationToken.None)
-        .ConfigureAwait(true);
-
-      var ffmpeg = _conversionService.FfmpegPath!;
-      var ffprobe = _conversionService.FfprobePath!;
 
       var options = BuildOptions() with
       {
@@ -536,35 +508,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
       };
       Directory.CreateDirectory(options.OutputDirectory);
 
-      var job = new ConversionPlanner().Plan(
-        new[]
-        {
-          new ConversionJob(
-            Guid.NewGuid(),
-            item.SourcePath,
-            null,
-            item.HasTrim ? TimeSpan.FromSeconds(item.TrimStartSeconds) : null,
-            item.HasTrim ? TimeSpan.FromSeconds(item.TrimEndSeconds) : null),
-        },
-        options)[0];
+      var workItem = new ConversionWorkItem(
+        Guid.NewGuid(),
+        item.SourcePath,
+        null,
+        item.HasTrim ? TimeSpan.FromSeconds(item.TrimStartSeconds) : null,
+        item.HasTrim ? TimeSpan.FromSeconds(item.TrimEndSeconds) : null,
+        item.Info);
 
-      var outcome = await new AudioConverter(_processRunner, ffmpeg, ffprobe)
-        .ConvertAsync(job, options, item.Info, null, AppendLog)
+      await _playback
+        .PrepareResultAsync(workItem, options, new Progress<BootstrapProgress>(ApplyBootstrapProgress), AppendLog)
         .ConfigureAwait(true);
 
-      if (outcome.Success && outcome.OutputPath is not null)
-      {
-        _preview.Load(outcome.OutputPath);
-        _preview.Volume = PlaybackVolume;
-        _playSelection = false;
-        _stopAtSeconds = null;
-        _preview.Play();
-        StatusText = "Воспроизведение результата";
-      }
-      else
-      {
-        StatusText = "Не удалось создать результат: " + outcome.Error;
-      }
+      _playback.Volume = PlaybackVolume;
+      _playback.Play();
+      StatusText = "Воспроизведение результата";
     }
     catch (Exception ex)
     {
@@ -720,15 +678,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
   {
     try
     {
-      await _conversionService
-        .EnsureFfmpegAsync(new Progress<BootstrapProgress>(ApplyBootstrapProgress), AppendLog, CancellationToken.None)
+      await _playback
+        .PrepareAsync(item.SourcePath, new Progress<BootstrapProgress>(ApplyBootstrapProgress), AppendLog)
         .ConfigureAwait(true);
 
-      var playable = await PreviewDecoder
-        .EnsurePlayableAsync(_processRunner, _conversionService.FfmpegPath!, item.SourcePath)
-        .ConfigureAwait(true);
-      _preview.Load(playable);
-      _preview.Volume = PlaybackVolume;
+      _playback.Volume = PlaybackVolume;
       return true;
     }
     catch (Exception ex)
@@ -817,38 +771,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
   }
 
-  private void Tick()
+  private void OnPlaybackPositionChanged(object? sender, EventArgs e)
   {
-    if (_preview.HasTrack)
-    {
-      PlaybackPositionSeconds = _preview.Position.TotalSeconds;
-      PlaybackPositionText = $"{TimeText.Format(PlaybackPositionSeconds)} / "
-        + TimeText.Format(_preview.TotalTime.TotalSeconds);
-    }
-    else
-    {
-      PlaybackPositionText = "00:00.000 / 00:00.000";
-    }
-
-    if (_playSelection
-      && _stopAtSeconds is double stopAt
-      && _preview.Position.TotalSeconds >= stopAt)
-    {
-      _preview.Pause();
-      _playSelection = false;
-      _stopAtSeconds = null;
-    }
-  }
-
-  private void OnPlaybackStopped(object? sender, EventArgs e)
-  {
-    if (Application.Current?.Dispatcher is { } dispatcher && !dispatcher.CheckAccess())
-    {
-      dispatcher.BeginInvoke(() => OnPlaybackStopped(sender, e));
-      return;
-    }
-
-    PlaybackPositionSeconds = _preview.Position.TotalSeconds;
+    PlaybackPositionSeconds = _playback.PositionSeconds;
+    PlaybackPositionText = _playback.TotalSeconds > 0
+      ? $"{TimeText.Format(PlaybackPositionSeconds)} / {TimeText.Format(_playback.TotalSeconds)}"
+      : "00:00.000 / 00:00.000";
   }
 
   private ConversionOptions BuildOptions()
@@ -1000,12 +928,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   private void AppendLog(string message)
   {
-    if (Application.Current?.Dispatcher is { } dispatcher && !dispatcher.CheckAccess())
-    {
-      dispatcher.BeginInvoke(() => AppendLog(message));
-      return;
-    }
-
     LogEntries.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
     while (LogEntries.Count > 500)
     {
@@ -1016,10 +938,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
   partial void OnSelectedItemChanged(QueueItemViewModel? value)
   {
     OnPropertyChanged(nameof(HasSelection));
-    _preview.Stop();
-    _playSelection = false;
-    _stopAtSeconds = null;
+    _playback.Stop();
     PlaybackPositionSeconds = 0;
+    PlaybackPositionText = "00:00.000 / 00:00.000";
     EditorTitle = value is null ? "Выберите файл в очереди" : value.FileName;
 
     if (value is not null)
@@ -1097,6 +1018,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   partial void OnPlaybackVolumeChanged(double value)
   {
-    _preview.Volume = value;
+    _playback.Volume = value;
   }
 }

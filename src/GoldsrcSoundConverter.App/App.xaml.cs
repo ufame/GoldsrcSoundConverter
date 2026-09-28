@@ -25,6 +25,8 @@ public partial class App : Application
     services.AddSingleton<IProcessRunner, ProcessRunner>();
     services.AddSingleton<FfmpegBootstrapper>();
     services.AddSingleton<IConversionService, ConversionService>();
+    services.AddSingleton<IAudioPreview, AudioPreviewService>();
+    services.AddSingleton<IPlaybackController, PlaybackController>();
     services.AddTransient<MainViewModel>();
     services.AddTransient<MainWindow>();
 

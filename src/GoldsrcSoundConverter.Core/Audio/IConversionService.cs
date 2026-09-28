@@ -22,6 +22,19 @@ public interface IConversionService
 
   Task<WaveformData?> TryExtractWaveformAsync(string path, CancellationToken cancellationToken = default);
 
+  Task<string> PreparePlayableAsync(
+    string sourcePath,
+    IProgress<BootstrapProgress>? bootstrapProgress,
+    Action<string>? log,
+    CancellationToken cancellationToken = default);
+
+  Task<ConversionOutcome> ConvertSingleAsync(
+    ConversionWorkItem item,
+    ConversionOptions options,
+    IProgress<BootstrapProgress>? bootstrapProgress,
+    Action<string>? log,
+    CancellationToken cancellationToken = default);
+
   Task<ConversionBatchResult> ConvertAsync(
     IReadOnlyList<ConversionWorkItem> workItems,
     ConversionOptions options,
