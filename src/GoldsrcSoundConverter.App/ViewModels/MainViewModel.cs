@@ -215,31 +215,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     var added = 0;
+    var candidates = InputFileDiscoverer.Discover(
+      paths,
+      (path, ex) => AppendLog($"Не удалось добавить «{path}»: {ex.Message}"));
 
-    foreach (var path in paths)
+    foreach (var candidate in candidates)
     {
-      try
+      if (AddFile(candidate.FilePath, candidate.SourceRoot))
       {
-        if (Directory.Exists(path))
-        {
-          foreach (var file in Directory
-                     .EnumerateFiles(path, "*", SearchOption.AllDirectories)
-                     .Where(AudioFileTypes.IsSupported))
-          {
-            if (AddFile(file, path))
-            {
-              added++;
-            }
-          }
-        }
-        else if (File.Exists(path) && AudioFileTypes.IsSupported(path) && AddFile(path, null))
-        {
-          added++;
-        }
-      }
-      catch (Exception ex)
-      {
-        AppendLog($"Не удалось добавить «{path}»: {ex.Message}");
+        added++;
       }
     }
 
