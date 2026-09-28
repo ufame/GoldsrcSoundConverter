@@ -17,7 +17,7 @@ namespace GoldsrcSoundConverter.App.ViewModels;
 
 public partial class MainViewModel : ObservableObject, IDisposable
 {
-  private readonly SettingsStore _settingsStore = new();
+  private readonly ISettingsStore _settingsStore;
   private readonly AudioPreviewService _preview = new();
   private readonly SemaphoreSlim _ffmpegLock = new(1, 1);
   private readonly SemaphoreSlim _probeGate = new(3, 3);
@@ -30,8 +30,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private bool _playSelection;
   private double? _stopAtSeconds;
 
-  public MainViewModel()
+  public MainViewModel(ISettingsStore settingsStore)
   {
+    _settingsStore = settingsStore;
     Items.CollectionChanged += (_, _) => StartCommand.NotifyCanExecuteChanged();
     _preview.PlaybackStopped += OnPlaybackStopped;
 

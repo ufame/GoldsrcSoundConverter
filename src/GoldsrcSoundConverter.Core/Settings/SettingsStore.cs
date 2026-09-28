@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace GoldsrcSoundConverter.Core.Settings;
 
-public sealed class SettingsStore
+public sealed class SettingsStore : ISettingsStore
 {
   private static readonly JsonSerializerOptions Options = new()
   {
