@@ -20,6 +20,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private readonly IFolderLauncher _folderLauncher;
   private readonly IConversionService _conversionService;
   private readonly IPlaybackController _playback;
+  private readonly ILogBuffer _log;
 
   private CancellationTokenSource? _conversionCts;
   private bool _applyingPreset;
@@ -29,13 +30,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     IFilePicker filePicker,
     IFolderLauncher folderLauncher,
     IConversionService conversionService,
-    IPlaybackController playback)
+    IPlaybackController playback,
+    ILogBuffer log)
   {
     _settingsStore = settingsStore;
     _filePicker = filePicker;
     _folderLauncher = folderLauncher;
     _conversionService = conversionService;
     _playback = playback;
+    _log = log;
     Items.CollectionChanged += (_, _) => StartCommand.NotifyCanExecuteChanged();
     _playback.PositionChanged += OnPlaybackPositionChanged;
 
@@ -50,7 +53,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   public ObservableCollection<QueueItemViewModel> Items { get; } = new();
 
-  public ObservableCollection<string> LogEntries { get; } = new();
+  public ObservableCollection<string> LogEntries => _log.Entries;
 
   public ObservableCollection<Cs16Preset> Presets { get; } = new();
 
@@ -913,11 +916,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   private void AppendLog(string message)
   {
-    LogEntries.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
-    while (LogEntries.Count > 500)
-    {
-      LogEntries.RemoveAt(0);
-    }
+    _log.Add(message);
   }
 
   partial void OnSelectedItemChanged(QueueItemViewModel? value)

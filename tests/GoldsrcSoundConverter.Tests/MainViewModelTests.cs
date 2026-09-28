@@ -1,3 +1,4 @@
+using GoldsrcSoundConverter.App.Services;
 using GoldsrcSoundConverter.App.ViewModels;
 using GoldsrcSoundConverter.Core.Audio;
 using GoldsrcSoundConverter.Core.Models;
@@ -17,6 +18,7 @@ public sealed class MainViewModelTests : IDisposable
   private readonly FakeFolderLauncher _folderLauncher = new();
   private readonly FakeConversionService _conversion = new();
   private readonly FakePlaybackController _playback = new();
+  private readonly LogBuffer _log = new();
 
   public void Dispose()
   {
@@ -307,7 +309,7 @@ public sealed class MainViewModelTests : IDisposable
   private MainViewModel CreateViewModel()
   {
     _settings.Settings.OutputDirectory = _temp.Path;
-    return new MainViewModel(_settings, _filePicker, _folderLauncher, _conversion, _playback);
+    return new MainViewModel(_settings, _filePicker, _folderLauncher, _conversion, _playback, _log);
   }
 
   private string CreateFile(string name)

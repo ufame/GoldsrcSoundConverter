@@ -27,6 +27,7 @@ public partial class App : Application
     services.AddSingleton<IConversionService, ConversionService>();
     services.AddSingleton<IAudioPreview, AudioPreviewService>();
     services.AddSingleton<IPlaybackController, PlaybackController>();
+    services.AddSingleton<ILogBuffer, LogBuffer>();
     services.AddTransient<MainViewModel>();
     services.AddTransient<MainWindow>();
 
