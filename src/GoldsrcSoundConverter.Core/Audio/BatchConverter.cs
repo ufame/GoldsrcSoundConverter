@@ -19,10 +19,15 @@ public sealed class BatchConverter
     Action<string>? log = null,
     CancellationToken cancellationToken = default)
   {
+    options.Validate();
+
     var results = new ConversionOutcome?[jobs.Count];
     var parallelOptions = new ParallelOptions
     {
-      MaxDegreeOfParallelism = Math.Clamp(options.Parallelism, 1, 16),
+      MaxDegreeOfParallelism = Math.Clamp(
+        options.Parallelism,
+        ConversionOptions.MinParallelism,
+        ConversionOptions.MaxParallelism),
       CancellationToken = cancellationToken,
     };
 

@@ -56,8 +56,7 @@ public sealed class OutputPathResolverTests : IDisposable
   {
     var source = CreateFile("music.mp3");
     File.WriteAllText(Path.Combine(_temp.Path, "music.wav"), "x");
-    var options = Options;
-    options.CollisionPolicy = CollisionPolicy.Skip;
+    var options = Options with { CollisionPolicy = CollisionPolicy.Skip };
 
     Assert.Null(OutputPathResolver.Resolve(source, null, options));
   }
@@ -68,8 +67,7 @@ public sealed class OutputPathResolverTests : IDisposable
     var source = CreateFile("music.ogg");
     var existing = Path.Combine(_temp.Path, "music.wav");
     File.WriteAllText(existing, "x");
-    var options = Options;
-    options.CollisionPolicy = CollisionPolicy.Overwrite;
+    var options = Options with { CollisionPolicy = CollisionPolicy.Overwrite };
 
     Assert.Equal(existing, OutputPathResolver.Resolve(source, null, options));
   }
@@ -85,9 +83,7 @@ public sealed class OutputPathResolverTests : IDisposable
     var output = Path.Combine(_temp.Path, "out");
     Directory.CreateDirectory(output);
 
-    var options = Options;
-    options.PreserveStructure = true;
-    options.OutputDirectory = output;
+    var options = Options with { PreserveStructure = true, OutputDirectory = output };
 
     var result = OutputPathResolver.Resolve(source, root, options);
 
@@ -104,9 +100,7 @@ public sealed class OutputPathResolverTests : IDisposable
     var output = Path.Combine(_temp.Path, "out");
     Directory.CreateDirectory(output);
 
-    var options = Options;
-    options.PreserveStructure = true;
-    options.OutputDirectory = output;
+    var options = Options with { PreserveStructure = true, OutputDirectory = output };
 
     var result = OutputPathResolver.Resolve(source, root, options);
 
@@ -125,9 +119,7 @@ public sealed class OutputPathResolverTests : IDisposable
     var output = Path.Combine(_temp.Path, "out");
     Directory.CreateDirectory(output);
 
-    var options = Options;
-    options.PreserveStructure = true;
-    options.OutputDirectory = output;
+    var options = Options with { PreserveStructure = true, OutputDirectory = output };
 
     var result = OutputPathResolver.Resolve(source, root, options);
 
@@ -146,9 +138,7 @@ public sealed class OutputPathResolverTests : IDisposable
     var output = Path.Combine(_temp.Path, "out");
     Directory.CreateDirectory(output);
 
-    var options = Options;
-    options.PreserveStructure = true;
-    options.OutputDirectory = output;
+    var options = Options with { PreserveStructure = true, OutputDirectory = output };
 
     var result = OutputPathResolver.Resolve(source, root, options);
 
@@ -166,9 +156,7 @@ public sealed class OutputPathResolverTests : IDisposable
     var output = Path.Combine(_temp.Path, "out");
     Directory.CreateDirectory(output);
 
-    var options = Options;
-    options.PreserveStructure = true;
-    options.OutputDirectory = output;
+    var options = Options with { PreserveStructure = true, OutputDirectory = output };
 
     var result = OutputPathResolver.Resolve(source, Path.Combine(_temp.Path, "SOUNDS"), options);
 
@@ -186,9 +174,7 @@ public sealed class OutputPathResolverTests : IDisposable
     var output = Path.Combine(_temp.Path, "out");
     Directory.CreateDirectory(output);
 
-    var options = Options;
-    options.PreserveStructure = true;
-    options.OutputDirectory = output;
+    var options = Options with { PreserveStructure = true, OutputDirectory = output };
 
     var result = OutputPathResolver.Resolve(
       source,
@@ -202,8 +188,7 @@ public sealed class OutputPathResolverTests : IDisposable
   public void ChangesExtensionAccordingToFormat()
   {
     var source = CreateFile("theme.ogg");
-    var options = Options;
-    options.Format = OutputAudioFormat.Mp3;
+    var options = Options with { Format = OutputAudioFormat.Mp3 };
 
     var result = OutputPathResolver.Resolve(source, null, options);
 

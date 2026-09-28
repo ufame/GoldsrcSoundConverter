@@ -70,8 +70,7 @@ public sealed class ConversionPlannerTests : IDisposable
   public void SkipPolicyReturnsNullForExistingAndReservedTargets()
   {
     File.WriteAllText(Path.Combine(_temp.Path, "dup.wav"), "x");
-    var options = Options;
-    options.CollisionPolicy = CollisionPolicy.Skip;
+    var options = Options with { CollisionPolicy = CollisionPolicy.Skip };
     var jobs = new[]
     {
       new ConversionJob(Guid.NewGuid(), Path.Combine(_temp.Path, "dup!.wav"), null, null, null),
@@ -87,8 +86,7 @@ public sealed class ConversionPlannerTests : IDisposable
   [Fact]
   public void SkipPolicyReturnsNullWhenReservedByEarlierJob()
   {
-    var options = Options;
-    options.CollisionPolicy = CollisionPolicy.Skip;
+    var options = Options with { CollisionPolicy = CollisionPolicy.Skip };
     var jobs = new[]
     {
       new ConversionJob(Guid.NewGuid(), Path.Combine(_temp.Path, "dup!.wav"), null, null, null),
@@ -105,8 +103,7 @@ public sealed class ConversionPlannerTests : IDisposable
   public void OverwritePolicyKeepsExistingTargetButRenamesIntraBatchCollision()
   {
     File.WriteAllText(Path.Combine(_temp.Path, "same.wav"), "x");
-    var options = Options;
-    options.CollisionPolicy = CollisionPolicy.Overwrite;
+    var options = Options with { CollisionPolicy = CollisionPolicy.Overwrite };
     var jobs = new[]
     {
       new ConversionJob(Guid.NewGuid(), Path.Combine(_temp.Path, "same!.wav"), null, null, null),
@@ -128,9 +125,7 @@ public sealed class ConversionPlannerTests : IDisposable
     Directory.CreateDirectory(Path.GetDirectoryName(first)!);
     Directory.CreateDirectory(Path.GetDirectoryName(second)!);
     var output = Path.Combine(_temp.Path, "out");
-    var options = Options;
-    options.PreserveStructure = true;
-    options.OutputDirectory = output;
+    var options = Options with { PreserveStructure = true, OutputDirectory = output };
 
     var planned = new ConversionPlanner().Plan(
       new[]

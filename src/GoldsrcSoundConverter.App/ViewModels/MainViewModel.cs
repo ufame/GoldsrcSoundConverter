@@ -524,13 +524,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
       _preview.Unload();
       var (ffmpeg, ffprobe) = await EnsureFfmpegAsync(showUiProgress: true, CancellationToken.None);
 
-      var options = BuildOptions();
-      options.OutputDirectory = Path.Combine(
-        Path.GetTempPath(), "GoldsrcSoundConverter", "preview", "result");
-      options.AsciiNames = false;
-      options.LowercaseNames = false;
-      options.CollisionPolicy = CollisionPolicy.Overwrite;
-      options.Parallelism = 1;
+      var options = BuildOptions() with
+      {
+        OutputDirectory = Path.Combine(
+          Path.GetTempPath(), "GoldsrcSoundConverter", "preview", "result"),
+        AsciiNames = false,
+        LowercaseNames = false,
+        CollisionPolicy = CollisionPolicy.Overwrite,
+        Parallelism = 1,
+      };
       Directory.CreateDirectory(options.OutputDirectory);
 
       var job = new ConversionPlanner().Plan(

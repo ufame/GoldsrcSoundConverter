@@ -23,6 +23,8 @@ public sealed class AudioConverter
     Action<string>? log = null,
     CancellationToken cancellationToken = default)
   {
+    options.Validate();
+
     try
     {
       progress?.Report(new ConversionProgress(job.Id, ConversionStage.Probing, 0, null));
