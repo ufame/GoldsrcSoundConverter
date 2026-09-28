@@ -28,6 +28,7 @@ public partial class App : Application
     services.AddSingleton<IAudioPreview, AudioPreviewService>();
     services.AddSingleton<IPlaybackController, PlaybackController>();
     services.AddSingleton<ILogBuffer, LogBuffer>();
+    services.AddTransient<IQueueManager, QueueManager>();
     services.AddTransient<MainViewModel>();
     services.AddTransient<MainWindow>();
 

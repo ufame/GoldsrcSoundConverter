@@ -7,7 +7,6 @@ using GoldsrcSoundConverter.App.Infrastructure.Shell;
 using GoldsrcSoundConverter.App.Services;
 using GoldsrcSoundConverter.Core.Audio;
 using GoldsrcSoundConverter.Core.Ffmpeg;
-using GoldsrcSoundConverter.Core.Files;
 using GoldsrcSoundConverter.Core.Models;
 using GoldsrcSoundConverter.Core.Settings;
 
@@ -20,6 +19,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private readonly IFolderLauncher _folderLauncher;
   private readonly IConversionService _conversionService;
   private readonly IPlaybackController _playback;
+  private readonly IQueueManager _queue;
   private readonly ILogBuffer _log;
 
   private CancellationTokenSource? _conversionCts;
@@ -31,6 +31,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     IFolderLauncher folderLauncher,
     IConversionService conversionService,
     IPlaybackController playback,
+    IQueueManager queue,
     ILogBuffer log)
   {
     _settingsStore = settingsStore;
@@ -38,6 +39,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     _folderLauncher = folderLauncher;
     _conversionService = conversionService;
     _playback = playback;
+    _queue = queue;
     _log = log;
     Items.CollectionChanged += (_, _) => StartCommand.NotifyCanExecuteChanged();
     _playback.PositionChanged += OnPlaybackPositionChanged;
@@ -51,7 +53,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     AppendLog("Готово к работе. Перетащите файлы в окно или нажмите «Добавить файлы».");
   }
 
-  public ObservableCollection<QueueItemViewModel> Items { get; } = new();
+  public ObservableCollection<QueueItemViewModel> Items => _queue.Items;
 
   public ObservableCollection<string> LogEntries => _log.Entries;
 
@@ -217,18 +219,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
       return;
     }
 
-    var added = 0;
-    var candidates = InputFileDiscoverer.Discover(
-      paths,
-      (path, ex) => AppendLog($"Не удалось добавить «{path}»: {ex.Message}"));
-
-    foreach (var candidate in candidates)
-    {
-      if (AddFile(candidate.FilePath, candidate.SourceRoot))
-      {
-        added++;
-      }
-    }
+    var added = _queue.Add(paths, BuildOptions());
 
     StatusText = added > 0
       ? $"Добавлено файлов: {added}"
@@ -273,15 +264,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
       return;
     }
 
-    Items.Remove(SelectedItem);
-    ReindexItems();
+    _queue.Remove(SelectedItem);
     SelectedItem = null;
   }
 
   [RelayCommand(CanExecute = nameof(CanEditQueue))]
   private void Clear()
   {
-    Items.Clear();
+    _queue.Clear();
     SelectedItem = null;
     StatusText = "Очередь очищена";
   }
@@ -602,66 +592,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     StatusText = "Настройки сохранены";
   }
 
-  private bool AddFile(string path, string? sourceRoot)
-  {
-    if (Items.Any(i => string.Equals(i.SourcePath, path, StringComparison.OrdinalIgnoreCase)))
-    {
-      return false;
-    }
-
-    var item = new QueueItemViewModel(Items.Count, path, sourceRoot);
-    Items.Add(item);
-    item.UpdateTargetSize(BuildOptions());
-    _ = ProbeItemAsync(item);
-    return true;
-  }
-
-  private void ReindexItems()
-  {
-    for (var i = 0; i < Items.Count; i++)
-    {
-      var replacement = new QueueItemViewModel(i, Items[i].SourcePath, Items[i].SourceRoot)
-      {
-        Id = Items[i].Id,
-        Info = Items[i].Info,
-        Waveform = Items[i].Waveform,
-        TrimStartSeconds = Items[i].TrimStartSeconds,
-        TrimEndSeconds = Items[i].TrimEndSeconds,
-        Stage = Items[i].Stage,
-        Progress = Items[i].Progress,
-        OutputPath = Items[i].OutputPath,
-        Error = Items[i].Error,
-        TargetSizeText = Items[i].TargetSizeText,
-      };
-
-      Items[i] = replacement;
-    }
-  }
-
-  private async Task ProbeItemAsync(QueueItemViewModel item)
-  {
-    if (item.Info is not null)
-    {
-      return;
-    }
-
-    try
-    {
-      var result = await _conversionService.TryProbeAsync(item.Id, item.SourcePath).ConfigureAwait(true);
-      if (result is null)
-      {
-        return;
-      }
-
-      item.Info = result.Info;
-      item.UpdateTargetSize(BuildOptions());
-    }
-    catch (Exception ex)
-    {
-      AppendLog($"Не удалось проанализировать {item.FileName}: {ex.Message}");
-    }
-  }
-
   private async Task<bool> PreparePreviewAsync(QueueItemViewModel item)
   {
     try
@@ -823,11 +753,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   private void RecomputeTargetSizes()
   {
-    var options = BuildOptions();
-    foreach (var item in Items)
-    {
-      item.UpdateTargetSize(options);
-    }
+    _queue.RecalculateTargetSizes(BuildOptions());
   }
 
   private void ApplySettings(AppSettings settings)

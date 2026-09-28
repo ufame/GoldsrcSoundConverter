@@ -309,7 +309,14 @@ public sealed class MainViewModelTests : IDisposable
   private MainViewModel CreateViewModel()
   {
     _settings.Settings.OutputDirectory = _temp.Path;
-    return new MainViewModel(_settings, _filePicker, _folderLauncher, _conversion, _playback, _log);
+    return new MainViewModel(
+      _settings,
+      _filePicker,
+      _folderLauncher,
+      _conversion,
+      _playback,
+      new QueueManager(_conversion, _log),
+      _log);
   }
 
   private string CreateFile(string name)
