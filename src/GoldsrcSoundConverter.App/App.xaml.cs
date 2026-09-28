@@ -32,6 +32,8 @@ public partial class App : Application
     services.AddSingleton<IConversionRequestFactory, ConversionRequestFactory>();
     services.AddSingleton<IPresetCatalog, PresetCatalog>();
     services.AddTransient<IConversionRunController, ConversionRunController>();
+    services.AddSingleton<IPlaybackCoordinator, PlaybackCoordinator>();
+    services.AddSingleton<IWaveformLoader, WaveformLoader>();
     services.AddTransient<MainViewModel>();
     services.AddTransient<MainWindow>();
 

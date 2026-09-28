@@ -32,6 +32,10 @@ public sealed class FakeConversionService : IConversionService
 
   public WaveformData? Waveform { get; set; }
 
+  public int WaveformRequests { get; private set; }
+
+  public Exception? WaveformException { get; set; }
+
   public void SetCustomFfmpegPath(string? customPath)
   {
     CustomPaths.Add(customPath);
@@ -77,6 +81,13 @@ public sealed class FakeConversionService : IConversionService
 
   public Task<WaveformData?> TryExtractWaveformAsync(string path, CancellationToken cancellationToken = default)
   {
+    WaveformRequests++;
+
+    if (WaveformException is not null)
+    {
+      throw WaveformException;
+    }
+
     return Task.FromResult(Waveform);
   }
 

@@ -113,6 +113,12 @@ public sealed class ConversionRunControllerTests : IDisposable
 
     await controller.RunAsync(items, Options(), value => values.Add(value));
 
+    var deadline = DateTime.UtcNow.AddSeconds(3);
+    while (!values.Any(value => value is > 0 and < 1) && DateTime.UtcNow < deadline)
+    {
+      await Task.Delay(10);
+    }
+
     Assert.Contains(values, value => value is > 0 and < 1);
   }
 

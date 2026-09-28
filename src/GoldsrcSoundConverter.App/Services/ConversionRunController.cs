@@ -50,11 +50,11 @@ public sealed class ConversionRunController : IConversionRunController
     try
     {
       var workItems = _requestFactory.CreateWorkItems(items);
-      var progress = new Progress<ConversionProgress>(value => ApplyProgress(items, value, onOverallProgress));
-      var probeProgress = new Progress<ProbeResult>(value => ApplyProbe(items, value, options));
+      var progress = new ActionProgress<ConversionProgress>(value => ApplyProgress(items, value, onOverallProgress));
+      var probeProgress = new ActionProgress<ProbeResult>(value => ApplyProbe(items, value, options));
       var bootstrapProgress = onBootstrapProgress is null
         ? null
-        : new Progress<BootstrapProgress>(onBootstrapProgress);
+        : new ActionProgress<BootstrapProgress>(onBootstrapProgress);
 
       var result = await _conversion
         .ConvertAsync(workItems, options, progress, probeProgress, bootstrapProgress, _log.Add, cancellationToken)
@@ -101,6 +101,21 @@ public sealed class ConversionRunController : IConversionRunController
 
     _isBusy = value;
     BusyChanged?.Invoke(this, EventArgs.Empty);
+  }
+
+  private sealed class ActionProgress<T> : IProgress<T>
+  {
+    private readonly Action<T> _action;
+
+    public ActionProgress(Action<T> action)
+    {
+      _action = action;
+    }
+
+    public void Report(T value)
+    {
+      _action(value);
+    }
   }
 
   private static void ApplyProgress(

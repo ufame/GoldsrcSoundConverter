@@ -18,11 +18,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private readonly IFilePicker _filePicker;
   private readonly IFolderLauncher _folderLauncher;
   private readonly IConversionService _conversionService;
-  private readonly IPlaybackController _playback;
+  private readonly IPlaybackCoordinator _playback;
   private readonly IQueueManager _queue;
   private readonly IConversionRequestFactory _requestFactory;
   private readonly IPresetCatalog _presetCatalog;
   private readonly IConversionRunController _runController;
+  private readonly IWaveformLoader _waveforms;
   private readonly ILogBuffer _log;
 
   private bool _applyingPreset;
@@ -32,11 +33,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     IFilePicker filePicker,
     IFolderLauncher folderLauncher,
     IConversionService conversionService,
-    IPlaybackController playback,
+    IPlaybackCoordinator playback,
     IQueueManager queue,
     IConversionRequestFactory requestFactory,
     IPresetCatalog presetCatalog,
     IConversionRunController runController,
+    IWaveformLoader waveforms,
     ILogBuffer log)
   {
     _settingsStore = settingsStore;
@@ -48,6 +50,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     _requestFactory = requestFactory;
     _presetCatalog = presetCatalog;
     _runController = runController;
+    _waveforms = waveforms;
     _log = log;
     Items.CollectionChanged += (_, _) => StartCommand.NotifyCanExecuteChanged();
     _playback.PositionChanged += OnPlaybackPositionChanged;
@@ -311,12 +314,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     OverallProgress = 0;
     StatusText = "Подготовка FFmpeg…";
 
+    var options = BuildOptions();
+
     if (SelectedItem is not null)
     {
-      _ = LoadWaveformAsync(SelectedItem);
+      _ = _waveforms.EnsureLoadedAsync(SelectedItem, options);
     }
 
-    var options = BuildOptions();
     StatusText = $"Конвертация: {Items.Count} файл(ов)…";
 
     try
@@ -364,13 +368,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private async Task PlayAsync()
   {
-    var item = SelectedItem;
-    if (item is null || !await PreparePreviewAsync(item))
+    if (SelectedItem is not { } item)
     {
       return;
     }
 
-    _playback.Play();
+    ApplyPlaybackResult(await _playback
+      .PlayAsync(item, new Progress<BootstrapProgress>(ApplyBootstrapProgress))
+      .ConfigureAwait(true));
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
@@ -389,96 +394,61 @@ public partial class MainViewModel : ObservableObject, IDisposable
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private async Task PlaySelectionAsync()
   {
-    var item = SelectedItem;
-    if (item is null)
+    if (SelectedItem is not { } item)
     {
       return;
     }
 
-    if (item.TrimEndSeconds - item.TrimStartSeconds <= 0.01)
-    {
-      await PlayAsync();
-      return;
-    }
-
-    if (!await PreparePreviewAsync(item))
-    {
-      return;
-    }
-
-    _playback.PlaySelection(item.TrimStartSeconds, item.TrimEndSeconds);
+    ApplyPlaybackResult(await _playback
+      .PlaySelectionAsync(item, new Progress<BootstrapProgress>(ApplyBootstrapProgress))
+      .ConfigureAwait(true));
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private async Task PreviewResultAsync()
   {
-    var item = SelectedItem;
-    if (item is null)
+    if (SelectedItem is not { } item)
     {
       return;
     }
 
-    try
-    {
-      StatusText = "Рендер результата…";
+    StatusText = "Рендер результата…";
 
-      var previewDirectory = Path.Combine(
-        Path.GetTempPath(), "GoldsrcSoundConverter", "preview", "result");
-      var options = _requestFactory.CreatePreviewOptions(SnapshotSettings(), previewDirectory);
-      Directory.CreateDirectory(options.OutputDirectory);
+    var previewDirectory = Path.Combine(
+      Path.GetTempPath(), "GoldsrcSoundConverter", "preview", "result");
+    var options = _requestFactory.CreatePreviewOptions(SnapshotSettings(), previewDirectory);
+    Directory.CreateDirectory(options.OutputDirectory);
 
-      var workItem = _requestFactory.CreateWorkItem(item);
-
-      await _playback
-        .PrepareResultAsync(workItem, options, new Progress<BootstrapProgress>(ApplyBootstrapProgress), AppendLog)
-        .ConfigureAwait(true);
-
-      _playback.Volume = PlaybackVolume;
-      _playback.Play();
-      StatusText = "Воспроизведение результата";
-    }
-    catch (Exception ex)
-    {
-      StatusText = "Ошибка предпросмотра: " + ex.Message;
-      AppendLog(StatusText);
-    }
+    ApplyPlaybackResult(await _playback
+      .PreviewResultAsync(item, options, new Progress<BootstrapProgress>(ApplyBootstrapProgress))
+      .ConfigureAwait(true));
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private void SetTrimStart()
   {
-    if (SelectedItem is null)
+    if (SelectedItem is { } item)
     {
-      return;
+      StatusText = _playback.SetTrimStart(item);
     }
-
-    SelectedItem.TrimStartSeconds = Math.Min(PlaybackPositionSeconds, SelectedItem.TrimEndSeconds);
-    StatusText = "Начало обрезки: " + TimeText.Format(SelectedItem.TrimStartSeconds);
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private void SetTrimEnd()
   {
-    if (SelectedItem is null)
+    if (SelectedItem is { } item)
     {
-      return;
+      StatusText = _playback.SetTrimEnd(item);
     }
-
-    SelectedItem.TrimEndSeconds = Math.Max(PlaybackPositionSeconds, SelectedItem.TrimStartSeconds);
-    StatusText = "Конец обрезки: " + TimeText.Format(SelectedItem.TrimEndSeconds);
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private void ResetTrim()
   {
-    if (SelectedItem is null)
+    if (SelectedItem is { } item)
     {
-      return;
+      StatusText = _playback.ResetTrim(item);
     }
-
-    SelectedItem.TrimStartSeconds = 0;
-    SelectedItem.TrimEndSeconds = SelectedItem.DurationSeconds;
-    StatusText = "Обрезка сброшена";
   }
 
   [RelayCommand]
@@ -527,54 +497,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     StatusText = "Настройки сохранены";
   }
 
-  private async Task<bool> PreparePreviewAsync(QueueItemViewModel item)
+  private void ApplyPlaybackResult(PlaybackResult result)
   {
-    try
+    if (result.Status is not null)
     {
-      await _playback
-        .PrepareAsync(item.SourcePath, new Progress<BootstrapProgress>(ApplyBootstrapProgress), AppendLog)
-        .ConfigureAwait(true);
-
-      _playback.Volume = PlaybackVolume;
-      return true;
-    }
-    catch (Exception ex)
-    {
-      StatusText = "Ошибка предпросмотра: " + ex.Message;
-      AppendLog(StatusText);
-      return false;
-    }
-  }
-
-  private async Task LoadWaveformAsync(QueueItemViewModel item)
-  {
-    if (item.Waveform is not null || item.IsWaveformLoading)
-    {
-      return;
-    }
-
-    item.IsWaveformLoading = true;
-    try
-    {
-      var data = await _conversionService.TryExtractWaveformAsync(item.SourcePath).ConfigureAwait(true);
-      if (data is null)
-      {
-        return;
-      }
-
-      item.Waveform = data;
-      if (item.Info is null)
-      {
-        item.UpdateTargetSize(BuildOptions());
-      }
-    }
-    catch (Exception ex)
-    {
-      AppendLog($"Волновая форма недоступна для {item.FileName}: {ex.Message}");
-    }
-    finally
-    {
-      item.IsWaveformLoading = false;
+      StatusText = result.Status;
     }
   }
 
@@ -758,7 +685,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     if (value is not null)
     {
-      _ = LoadWaveformAsync(value);
+      _ = _waveforms.EnsureLoadedAsync(value, BuildOptions());
     }
   }
 

@@ -314,11 +314,12 @@ public sealed class MainViewModelTests : IDisposable
       _filePicker,
       _folderLauncher,
       _conversion,
-      _playback,
+      new PlaybackCoordinator(_playback, new ConversionRequestFactory(), _log),
       new QueueManager(_conversion, _log),
       new ConversionRequestFactory(),
       new PresetCatalog(),
       new ConversionRunController(_conversion, new ConversionRequestFactory(), _log),
+      new WaveformLoader(_conversion, _log),
       _log);
   }
 
