@@ -12,6 +12,7 @@ public static class PreviewDecoder
   }
 
   public static async Task<string> EnsurePlayableAsync(
+    IProcessRunner processRunner,
     string ffmpegPath,
     string sourcePath,
     CancellationToken cancellationToken = default)
@@ -37,7 +38,7 @@ public static class PreviewDecoder
     try
     {
       var arguments = FfmpegArguments.BuildDecodeToWav(sourcePath, tempPath, 44100, 2);
-      var result = await FfmpegRunner
+      var result = await processRunner
         .RunAsync(ffmpegPath, arguments, cancellationToken: cancellationToken)
         .ConfigureAwait(false);
 

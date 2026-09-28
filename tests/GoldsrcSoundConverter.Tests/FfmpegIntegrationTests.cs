@@ -10,6 +10,7 @@ namespace GoldsrcSoundConverter.Tests;
 public sealed class FfmpegIntegrationTests : IDisposable
 {
   private readonly TempDirectory _temp = new();
+  private readonly ProcessRunner _runner = new();
   private readonly string? _ffmpeg = FindFfmpeg();
   private readonly string? _ffprobe;
 
@@ -57,7 +58,7 @@ public sealed class FfmpegIntegrationTests : IDisposable
     Assert.Equal(22050, header.SampleRate);
     Assert.Equal(16, header.BitsPerSample);
 
-    var info = await AudioProbe.ProbeAsync(_ffprobe!, outcome.OutputPath!);
+    var info = await AudioProbe.ProbeAsync(_runner, _ffprobe!, outcome.OutputPath!);
     Assert.InRange(info.Duration.TotalSeconds, 0.95, 1.05);
   }
 
@@ -94,7 +95,7 @@ public sealed class FfmpegIntegrationTests : IDisposable
       Assert.False(bytes[^128] == (byte)'T' && bytes[^127] == (byte)'A' && bytes[^126] == (byte)'G');
     }
 
-    var info = await AudioProbe.ProbeAsync(_ffprobe!, outcome.OutputPath!);
+    var info = await AudioProbe.ProbeAsync(_runner, _ffprobe!, outcome.OutputPath!);
     Assert.Equal("mp3", info.CodecName);
     Assert.Equal(44100, info.SampleRate);
     Assert.Equal(2, info.Channels);
@@ -133,10 +134,10 @@ public sealed class FfmpegIntegrationTests : IDisposable
       },
       options)[0];
 
-    var outcome = await new AudioConverter(_ffmpeg!, _ffprobe!).ConvertAsync(job, options, null);
+    var outcome = await new AudioConverter(_runner, _ffmpeg!, _ffprobe!).ConvertAsync(job, options, null);
 
     Assert.True(outcome.Success, outcome.Error);
-    var info = await AudioProbe.ProbeAsync(_ffprobe!, outcome.OutputPath!);
+    var info = await AudioProbe.ProbeAsync(_runner, _ffprobe!, outcome.OutputPath!);
     Assert.InRange(info.Duration.TotalSeconds, 0.9, 1.1);
   }
 
@@ -180,7 +181,7 @@ public sealed class FfmpegIntegrationTests : IDisposable
 
     var sine = await GenerateSineAsync("source", 1.0);
     var ogg = Path.Combine(_temp.Path, "clip.ogg");
-    var transcode = await FfmpegRunner.RunAsync(_ffmpeg!, new[]
+    var transcode = await _runner.RunAsync(_ffmpeg!, new[]
     {
       "-hide_banner", "-nostdin", "-y",
       "-i", sine,
@@ -204,7 +205,7 @@ public sealed class FfmpegIntegrationTests : IDisposable
     var outcome = await ConvertAsync(ogg, options);
 
     Assert.True(outcome.Success, outcome.Error);
-    var info = await AudioProbe.ProbeAsync(_ffprobe!, outcome.OutputPath!);
+    var info = await AudioProbe.ProbeAsync(_runner, _ffprobe!, outcome.OutputPath!);
     Assert.Equal("mp3", info.CodecName);
     Assert.InRange(info.Duration.TotalSeconds, 0.9, 1.1);
   }
@@ -218,7 +219,7 @@ public sealed class FfmpegIntegrationTests : IDisposable
     }
 
     var source = await GenerateSineAsync("wave", 1.0);
-    var waveform = await WaveformExtractor.ExtractAsync(_ffmpeg!, source);
+    var waveform = await WaveformExtractor.ExtractAsync(_runner, _ffmpeg!, source);
 
     Assert.True(waveform.BucketCount > 100);
     Assert.InRange(waveform.Duration.TotalSeconds, 0.9, 1.1);
@@ -237,7 +238,7 @@ public sealed class FfmpegIntegrationTests : IDisposable
       new[] { new ConversionJob(Guid.NewGuid(), source, null, null, null) },
       options)[0];
 
-    var converter = new AudioConverter(_ffmpeg!, _ffprobe!);
+    var converter = new AudioConverter(_runner, _ffmpeg!, _ffprobe!);
     return await converter.ConvertAsync(job, options, null);
   }
 
@@ -263,7 +264,7 @@ public sealed class FfmpegIntegrationTests : IDisposable
 
     arguments.Add(path);
 
-    var result = await FfmpegRunner.RunAsync(_ffmpeg!, arguments);
+    var result = await _runner.RunAsync(_ffmpeg!, arguments);
     Assert.True(result.Success, result.StandardError);
     Assert.True(File.Exists(path));
     return path;
@@ -272,7 +273,7 @@ public sealed class FfmpegIntegrationTests : IDisposable
   private async Task<double> MeasureMaxVolumeDbAsync(string path)
   {
     var arguments = FfmpegArguments.BuildMeasureVolume(path, TimeSpan.Zero, TimeSpan.FromSeconds(1));
-    var result = await FfmpegRunner.RunAsync(_ffmpeg!, arguments);
+    var result = await _runner.RunAsync(_ffmpeg!, arguments);
     var match = System.Text.RegularExpressions.Regex.Match(
       result.StandardError,
       @"max_volume:\s*(-?\d+(?:\.\d+)?)\s*dB");

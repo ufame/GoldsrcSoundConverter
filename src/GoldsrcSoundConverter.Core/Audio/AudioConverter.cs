@@ -4,13 +4,15 @@ using GoldsrcSoundConverter.Core.Models;
 
 namespace GoldsrcSoundConverter.Core.Audio;
 
-public sealed class AudioConverter
+public sealed class AudioConverter : IAudioConverter
 {
+  private readonly IProcessRunner _processRunner;
   private readonly string _ffmpegPath;
   private readonly string _ffprobePath;
 
-  public AudioConverter(string ffmpegPath, string ffprobePath)
+  public AudioConverter(IProcessRunner processRunner, string ffmpegPath, string ffprobePath)
   {
+    _processRunner = processRunner;
     _ffmpegPath = ffmpegPath;
     _ffprobePath = ffprobePath;
   }
@@ -29,7 +31,7 @@ public sealed class AudioConverter
     {
       progress?.Report(new ConversionProgress(job.Id, ConversionStage.Probing, 0, null));
       var info = knownInfo ?? await AudioProbe
-        .ProbeAsync(_ffprobePath, job.SourcePath, cancellationToken)
+        .ProbeAsync(_processRunner, _ffprobePath, job.SourcePath, cancellationToken)
         .ConfigureAwait(false);
 
       var outputPath = job.OutputPath;
@@ -69,7 +71,7 @@ public sealed class AudioConverter
       var stopwatch = Stopwatch.StartNew();
       progress?.Report(new ConversionProgress(job.Id, ConversionStage.Converting, 0, outputDuration));
 
-      var result = await FfmpegRunner.RunAsync(
+      var result = await _processRunner.RunAsync(
         _ffmpegPath,
         arguments,
         line =>
@@ -92,7 +94,7 @@ public sealed class AudioConverter
       }
 
       var outputInfo = await AudioProbe
-        .ProbeAsync(_ffprobePath, outputPath, cancellationToken)
+        .ProbeAsync(_processRunner, _ffprobePath, outputPath, cancellationToken)
         .ConfigureAwait(false);
 
       progress?.Report(new ConversionProgress(job.Id, ConversionStage.Completed, 1, TimeSpan.Zero));
@@ -127,6 +129,7 @@ public sealed class AudioConverter
 
     progress?.Report(new ConversionProgress(job.Id, ConversionStage.Normalizing, 0, null));
     var gainDb = await PeakNormalizer.MeasureGainAsync(
+      _processRunner,
       _ffmpegPath,
       job.SourcePath,
       trimStart,

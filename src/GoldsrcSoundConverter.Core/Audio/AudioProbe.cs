@@ -8,6 +8,7 @@ namespace GoldsrcSoundConverter.Core.Audio;
 public static class AudioProbe
 {
   public static async Task<AudioInfo> ProbeAsync(
+    IProcessRunner processRunner,
     string ffprobePath,
     string filePath,
     CancellationToken cancellationToken = default)
@@ -23,7 +24,7 @@ public static class AudioProbe
       filePath,
     };
 
-    var result = await FfmpegRunner
+    var result = await processRunner
       .RunAsync(ffprobePath, arguments, cancellationToken: cancellationToken)
       .ConfigureAwait(false);
 

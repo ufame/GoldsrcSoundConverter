@@ -4,11 +4,11 @@ namespace GoldsrcSoundConverter.Core.Audio;
 
 public sealed class BatchConverter
 {
-  private readonly AudioConverter _converter;
+  private readonly IAudioConverter _converter;
 
-  public BatchConverter(string ffmpegPath, string ffprobePath)
+  public BatchConverter(IAudioConverter converter)
   {
-    _converter = new AudioConverter(ffmpegPath, ffprobePath);
+    _converter = converter;
   }
 
   public async Task<IReadOnlyList<ConversionOutcome>> RunAsync(

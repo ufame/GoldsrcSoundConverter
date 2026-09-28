@@ -8,6 +8,7 @@ public static class WaveformExtractor
   public const int SamplesPerBucket = 64;
 
   public static async Task<WaveformData> ExtractAsync(
+    IProcessRunner processRunner,
     string ffmpegPath,
     string filePath,
     CancellationToken cancellationToken = default)
@@ -47,7 +48,7 @@ public static class WaveformExtractor
     }
 
     var arguments = FfmpegArguments.BuildRawWaveform(filePath, PreviewSampleRate);
-    var standardError = await FfmpegRunner.RunBinaryAsync(
+    var standardError = await processRunner.RunBinaryAsync(
       ffmpegPath,
       arguments,
       async (stream, token) =>

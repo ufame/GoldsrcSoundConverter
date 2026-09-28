@@ -15,6 +15,7 @@ public static class PeakNormalizer
     RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
   public static async Task<double?> MeasureGainAsync(
+    IProcessRunner processRunner,
     string ffmpegPath,
     string inputPath,
     TimeSpan trimStart,
@@ -24,7 +25,7 @@ public static class PeakNormalizer
     CancellationToken cancellationToken = default)
   {
     var arguments = FfmpegArguments.BuildMeasureVolume(inputPath, trimStart, outputDuration);
-    var result = await FfmpegRunner
+    var result = await processRunner
       .RunAsync(ffmpegPath, arguments, cancellationToken: cancellationToken)
       .ConfigureAwait(false);
 

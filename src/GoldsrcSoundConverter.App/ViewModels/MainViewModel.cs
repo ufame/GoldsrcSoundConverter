@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
@@ -21,6 +20,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private readonly ISettingsStore _settingsStore;
   private readonly IFilePicker _filePicker;
   private readonly IFolderLauncher _folderLauncher;
+  private readonly IProcessRunner _processRunner;
   private readonly AudioPreviewService _preview = new();
   private readonly SemaphoreSlim _ffmpegLock = new(1, 1);
   private readonly SemaphoreSlim _probeGate = new(3, 3);
@@ -33,11 +33,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private bool _playSelection;
   private double? _stopAtSeconds;
 
-  public MainViewModel(ISettingsStore settingsStore, IFilePicker filePicker, IFolderLauncher folderLauncher)
+  public MainViewModel(
+    ISettingsStore settingsStore,
+    IFilePicker filePicker,
+    IFolderLauncher folderLauncher,
+    IProcessRunner processRunner)
   {
     _settingsStore = settingsStore;
     _filePicker = filePicker;
     _folderLauncher = folderLauncher;
+    _processRunner = processRunner;
     Items.CollectionChanged += (_, _) => StartCommand.NotifyCanExecuteChanged();
     _preview.PlaybackStopped += OnPlaybackStopped;
 
@@ -376,7 +381,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
       var progress = new Progress<ConversionProgress>(ApplyProgress);
       StatusText = $"Конвертация: {plannedJobs.Count} файл(ов)…";
 
-      var outcomes = await new BatchConverter(ffmpeg, ffprobe)
+      var outcomes = await new BatchConverter(new AudioConverter(_processRunner, ffmpeg, ffprobe))
         .RunAsync(plannedJobs, options, knownInfos, progress, AppendLog, cancellationToken)
         .ConfigureAwait(true);
 
@@ -543,7 +548,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         },
         options)[0];
 
-      var outcome = await new AudioConverter(ffmpeg, ffprobe)
+      var outcome = await new AudioConverter(_processRunner, ffmpeg, ffprobe)
         .ConvertAsync(job, options, item.Info, null, AppendLog)
         .ConfigureAwait(true);
 
@@ -700,7 +705,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     await _probeGate.WaitAsync().ConfigureAwait(true);
     try
     {
-      var info = await AudioProbe.ProbeAsync(ffprobe, item.SourcePath).ConfigureAwait(true);
+      var info = await AudioProbe.ProbeAsync(_processRunner, ffprobe, item.SourcePath).ConfigureAwait(true);
       item.Info = info;
       item.UpdateTargetSize(BuildOptions());
     }
@@ -730,7 +735,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
       {
         try
         {
-          var info = await AudioProbe.ProbeAsync(ffprobePath, item.SourcePath, token).ConfigureAwait(true);
+          var info = await AudioProbe.ProbeAsync(_processRunner, ffprobePath, item.SourcePath, token).ConfigureAwait(true);
           item.Info = info;
           item.UpdateTargetSize(BuildOptions());
         }
@@ -750,7 +755,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     try
     {
       var (ffmpeg, _) = await EnsureFfmpegAsync(showUiProgress: true, CancellationToken.None);
-      var playable = await PreviewDecoder.EnsurePlayableAsync(ffmpeg, item.SourcePath).ConfigureAwait(true);
+      var playable = await PreviewDecoder.EnsurePlayableAsync(_processRunner, ffmpeg, item.SourcePath).ConfigureAwait(true);
       _preview.Load(playable);
       _preview.Volume = PlaybackVolume;
       return true;
@@ -778,7 +783,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     item.IsWaveformLoading = true;
     try
     {
-      var data = await WaveformExtractor.ExtractAsync(ffmpeg, item.SourcePath).ConfigureAwait(true);
+      var data = await WaveformExtractor.ExtractAsync(_processRunner, ffmpeg, item.SourcePath).ConfigureAwait(true);
       item.Waveform = data;
       if (item.Info is null)
       {

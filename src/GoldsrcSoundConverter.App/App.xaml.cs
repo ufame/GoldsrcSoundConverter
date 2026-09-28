@@ -2,6 +2,7 @@
 using GoldsrcSoundConverter.App.Infrastructure.FilePicker;
 using GoldsrcSoundConverter.App.Infrastructure.Shell;
 using GoldsrcSoundConverter.App.ViewModels;
+using GoldsrcSoundConverter.Core.Ffmpeg;
 using GoldsrcSoundConverter.Core.Settings;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -19,6 +20,7 @@ public partial class App : Application
     services.AddSingleton<ISettingsStore>(new SettingsStore());
     services.AddSingleton<IFilePicker, WpfFilePicker>();
     services.AddSingleton<IFolderLauncher, WindowsFolderLauncher>();
+    services.AddSingleton<IProcessRunner, ProcessRunner>();
     services.AddTransient<MainViewModel>();
     services.AddTransient<MainWindow>();
 
