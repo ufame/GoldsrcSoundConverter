@@ -34,3 +34,18 @@ public sealed record ConversionOutcome(
   string? OutputPath,
   string? Error,
   AudioInfo? OutputInfo);
+
+public sealed record ConversionWorkItem(
+  Guid Id,
+  string SourcePath,
+  string? SourceRoot,
+  TimeSpan? TrimStart,
+  TimeSpan? TrimEnd,
+  AudioInfo? KnownInfo);
+
+public sealed record ProbeResult(Guid Id, AudioInfo Info);
+
+public sealed record ConversionBatchResult(
+  IReadOnlyList<ConversionOutcome> Outcomes,
+  string FfmpegPath,
+  string FfprobePath);

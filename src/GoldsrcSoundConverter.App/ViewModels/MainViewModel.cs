@@ -21,13 +21,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private readonly IFilePicker _filePicker;
   private readonly IFolderLauncher _folderLauncher;
   private readonly IProcessRunner _processRunner;
+  private readonly IConversionService _conversionService;
   private readonly AudioPreviewService _preview = new();
-  private readonly SemaphoreSlim _ffmpegLock = new(1, 1);
-  private readonly SemaphoreSlim _probeGate = new(3, 3);
   private readonly DispatcherTimer _timer;
 
-  private string? _ffmpegPath;
-  private string? _ffprobePath;
   private CancellationTokenSource? _conversionCts;
   private bool _applyingPreset;
   private bool _playSelection;
@@ -37,12 +34,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     ISettingsStore settingsStore,
     IFilePicker filePicker,
     IFolderLauncher folderLauncher,
-    IProcessRunner processRunner)
+    IProcessRunner processRunner,
+    IConversionService conversionService)
   {
     _settingsStore = settingsStore;
     _filePicker = filePicker;
     _folderLauncher = folderLauncher;
     _processRunner = processRunner;
+    _conversionService = conversionService;
     Items.CollectionChanged += (_, _) => StartCommand.NotifyCanExecuteChanged();
     _preview.PlaybackStopped += OnPlaybackStopped;
 
@@ -262,7 +261,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
       ? $"Добавлено файлов: {added}"
       : "Новые файлы не найдены";
 
-    if (added > 0 && !TryGetReadyFfmpeg(out _, out _))
+    if (added > 0 && !_conversionService.TryResolveFfmpeg(out _, out _))
     {
       AppendLog("FFmpeg ещё не установлен — анализ и волновая форма появятся после первой конвертации.");
     }
@@ -346,50 +345,46 @@ public partial class MainViewModel : ObservableObject, IDisposable
     try
     {
       StatusText = "Подготовка FFmpeg…";
-      var (ffmpeg, ffprobe) = await EnsureFfmpegAsync(showUiProgress: true, cancellationToken);
 
-      await ProbeMissingItemsAsync(ffprobe, cancellationToken);
-      if (SelectedItem is not null)
-      {
-        _ = LoadWaveformAsync(SelectedItem);
-      }
-
-      var options = BuildOptions();
-      var jobs = new List<ConversionJob>();
-      var knownInfos = new Dictionary<Guid, AudioInfo>();
-
+      var workItems = new List<ConversionWorkItem>(Items.Count);
       foreach (var item in Items)
       {
         item.Progress = 0;
         item.Error = null;
         item.OutputPath = null;
         item.Stage = ConversionStage.Pending;
-        jobs.Add(new ConversionJob(
+        workItems.Add(new ConversionWorkItem(
           item.Id,
           item.SourcePath,
           item.SourceRoot,
           item.HasTrim ? TimeSpan.FromSeconds(item.TrimStartSeconds) : null,
-          item.HasTrim ? TimeSpan.FromSeconds(item.TrimEndSeconds) : null));
-
-        if (item.Info is not null)
-        {
-          knownInfos[item.Id] = item.Info;
-        }
+          item.HasTrim ? TimeSpan.FromSeconds(item.TrimEndSeconds) : null,
+          item.Info));
       }
 
-      var plannedJobs = new ConversionPlanner().Plan(jobs, options);
-      var progress = new Progress<ConversionProgress>(ApplyProgress);
-      StatusText = $"Конвертация: {plannedJobs.Count} файл(ов)…";
+      if (SelectedItem is not null)
+      {
+        _ = LoadWaveformAsync(SelectedItem);
+      }
 
-      var outcomes = await new BatchConverter(new AudioConverter(_processRunner, ffmpeg, ffprobe))
-        .RunAsync(plannedJobs, options, knownInfos, progress, AppendLog, cancellationToken)
+      var options = BuildOptions();
+      StatusText = $"Конвертация: {workItems.Count} файл(ов)…";
+
+      var progress = new Progress<ConversionProgress>(ApplyProgress);
+      var probeProgress = new Progress<ProbeResult>(ApplyProbeResult);
+      var bootstrapProgress = new Progress<BootstrapProgress>(ApplyBootstrapProgress);
+
+      var result = await _conversionService
+        .ConvertAsync(workItems, options, progress, probeProgress, bootstrapProgress, AppendLog, cancellationToken)
         .ConfigureAwait(true);
+
+      UpdateFfmpegStatus();
 
       var completed = 0;
       var failed = 0;
       var skipped = 0;
 
-      foreach (var outcome in outcomes)
+      foreach (var outcome in result.Outcomes)
       {
         var item = Items.FirstOrDefault(i => i.Id == outcome.JobId);
         if (item is null)
@@ -523,7 +518,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
       StatusText = "Рендер результата…";
       _preview.Unload();
-      var (ffmpeg, ffprobe) = await EnsureFfmpegAsync(showUiProgress: true, CancellationToken.None);
+      await _conversionService
+        .EnsureFfmpegAsync(new Progress<BootstrapProgress>(ApplyBootstrapProgress), AppendLog, CancellationToken.None)
+        .ConfigureAwait(true);
+
+      var ffmpeg = _conversionService.FfmpegPath!;
+      var ffprobe = _conversionService.FfprobePath!;
 
       var options = BuildOptions() with
       {
@@ -627,9 +627,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     if (file is not null)
     {
       FfmpegCustomPath = file;
-      _ffmpegPath = null;
-      _ffprobePath = null;
-      UpdateFfmpegStatus();
     }
   }
 
@@ -697,65 +694,39 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   private async Task ProbeItemAsync(QueueItemViewModel item)
   {
-    if (item.Info is not null || !TryGetReadyFfmpeg(out _, out var ffprobe))
+    if (item.Info is not null)
     {
       return;
     }
 
-    await _probeGate.WaitAsync().ConfigureAwait(true);
     try
     {
-      var info = await AudioProbe.ProbeAsync(_processRunner, ffprobe, item.SourcePath).ConfigureAwait(true);
-      item.Info = info;
+      var result = await _conversionService.TryProbeAsync(item.Id, item.SourcePath).ConfigureAwait(true);
+      if (result is null)
+      {
+        return;
+      }
+
+      item.Info = result.Info;
       item.UpdateTargetSize(BuildOptions());
     }
     catch (Exception ex)
     {
       AppendLog($"Не удалось проанализировать {item.FileName}: {ex.Message}");
     }
-    finally
-    {
-      _probeGate.Release();
-    }
-  }
-
-  private async Task ProbeMissingItemsAsync(string ffprobePath, CancellationToken cancellationToken)
-  {
-    var pending = Items.Where(i => i.Info is null).ToArray();
-    if (pending.Length == 0)
-    {
-      return;
-    }
-
-    StatusText = "Анализ файлов…";
-    await Parallel.ForEachAsync(
-      pending,
-      new ParallelOptions { MaxDegreeOfParallelism = 3, CancellationToken = cancellationToken },
-      async (item, token) =>
-      {
-        try
-        {
-          var info = await AudioProbe.ProbeAsync(_processRunner, ffprobePath, item.SourcePath, token).ConfigureAwait(true);
-          item.Info = info;
-          item.UpdateTargetSize(BuildOptions());
-        }
-        catch (OperationCanceledException)
-        {
-          throw;
-        }
-        catch (Exception ex)
-        {
-          AppendLog($"Не удалось проанализировать {item.FileName}: {ex.Message}");
-        }
-      }).ConfigureAwait(true);
   }
 
   private async Task<bool> PreparePreviewAsync(QueueItemViewModel item)
   {
     try
     {
-      var (ffmpeg, _) = await EnsureFfmpegAsync(showUiProgress: true, CancellationToken.None);
-      var playable = await PreviewDecoder.EnsurePlayableAsync(_processRunner, ffmpeg, item.SourcePath).ConfigureAwait(true);
+      await _conversionService
+        .EnsureFfmpegAsync(new Progress<BootstrapProgress>(ApplyBootstrapProgress), AppendLog, CancellationToken.None)
+        .ConfigureAwait(true);
+
+      var playable = await PreviewDecoder
+        .EnsurePlayableAsync(_processRunner, _conversionService.FfmpegPath!, item.SourcePath)
+        .ConfigureAwait(true);
       _preview.Load(playable);
       _preview.Volume = PlaybackVolume;
       return true;
@@ -775,15 +746,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
       return;
     }
 
-    if (!TryGetReadyFfmpeg(out var ffmpeg, out _))
-    {
-      return;
-    }
-
     item.IsWaveformLoading = true;
     try
     {
-      var data = await WaveformExtractor.ExtractAsync(_processRunner, ffmpeg, item.SourcePath).ConfigureAwait(true);
+      var data = await _conversionService.TryExtractWaveformAsync(item.SourcePath).ConfigureAwait(true);
+      if (data is null)
+      {
+        return;
+      }
+
       item.Waveform = data;
       if (item.Info is null)
       {
@@ -800,74 +771,28 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
   }
 
-  private async Task<(string Ffmpeg, string Ffprobe)> EnsureFfmpegAsync(
-    bool showUiProgress,
-    CancellationToken cancellationToken)
+  private void ApplyProbeResult(ProbeResult probe)
   {
-    if (_ffmpegPath is not null && _ffprobePath is not null)
+    var item = Items.FirstOrDefault(i => i.Id == probe.Id);
+    if (item is null || item.Info is not null)
     {
-      return (_ffmpegPath, _ffprobePath);
+      return;
     }
 
-    await _ffmpegLock.WaitAsync(cancellationToken).ConfigureAwait(true);
-    try
-    {
-      if (_ffmpegPath is not null && _ffprobePath is not null)
-      {
-        return (_ffmpegPath, _ffprobePath);
-      }
-
-      IProgress<BootstrapProgress>? progress = showUiProgress
-        ? new Progress<BootstrapProgress>(p =>
-        {
-          FfmpegStatusText = p.Percent is double percent
-            ? $"{p.Stage} {percent:P0}"
-            : p.Stage;
-          if (p.Percent is double value)
-          {
-            OverallProgress = value;
-          }
-        })
-        : null;
-
-      var bootstrapper = new FfmpegBootstrapper();
-      var result = await bootstrapper
-        .EnsureAsync(FfmpegCustomPath, progress, AppendLog, cancellationToken)
-        .ConfigureAwait(true);
-
-      _ffmpegPath = result.Ffmpeg;
-      _ffprobePath = result.Ffprobe;
-      OverallProgress = 0;
-      UpdateFfmpegStatus();
-      return result;
-    }
-    finally
-    {
-      _ffmpegLock.Release();
-    }
+    item.Info = probe.Info;
+    item.UpdateTargetSize(BuildOptions());
   }
 
-  private bool TryGetReadyFfmpeg(out string ffmpeg, out string ffprobe)
+  private void ApplyBootstrapProgress(BootstrapProgress progress)
   {
-    if (_ffmpegPath is not null && _ffprobePath is not null)
-    {
-      ffmpeg = _ffmpegPath;
-      ffprobe = _ffprobePath;
-      return true;
-    }
+    FfmpegStatusText = progress.Percent is double percent
+      ? $"{progress.Stage} {percent:P0}"
+      : progress.Stage;
 
-    if (FfmpegBootstrapper.TryResolveCustom(FfmpegCustomPath, out ffmpeg, out ffprobe)
-      || new FfmpegBootstrapper().TryResolve(out ffmpeg, out ffprobe))
+    if (progress.Percent is double value)
     {
-      _ffmpegPath = ffmpeg;
-      _ffprobePath = ffprobe;
-      UpdateFfmpegStatus();
-      return true;
+      OverallProgress = value;
     }
-
-    ffmpeg = string.Empty;
-    ffprobe = string.Empty;
-    return false;
   }
 
   private void ApplyProgress(ConversionProgress progress)
@@ -1061,10 +986,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   private void UpdateFfmpegStatus()
   {
-    if (_ffmpegPath is not null && _ffprobePath is not null)
+    if (_conversionService.FfmpegPath is not null && _conversionService.FfprobePath is not null)
     {
       FfmpegStatusText = "FFmpeg: готов";
-      FfmpegDownloadText = _ffmpegPath;
+      FfmpegDownloadText = _conversionService.FfmpegPath;
       return;
     }
 
@@ -1166,8 +1091,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   partial void OnFfmpegCustomPathChanged(string? value)
   {
-    _ffmpegPath = null;
-    _ffprobePath = null;
+    _conversionService.SetCustomFfmpegPath(value);
     UpdateFfmpegStatus();
   }
 
