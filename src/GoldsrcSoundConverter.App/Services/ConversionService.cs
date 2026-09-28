@@ -1,4 +1,5 @@
 using System.IO;
+using GoldsrcSoundConverter.App.Infrastructure.Audio;
 using GoldsrcSoundConverter.Core.Audio;
 using GoldsrcSoundConverter.Core.Ffmpeg;
 using GoldsrcSoundConverter.Core.Files;

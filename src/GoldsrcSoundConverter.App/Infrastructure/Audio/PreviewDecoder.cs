@@ -2,7 +2,7 @@ using System.IO;
 using GoldsrcSoundConverter.Core.Audio;
 using GoldsrcSoundConverter.Core.Ffmpeg;
 
-namespace GoldsrcSoundConverter.App.Services;
+namespace GoldsrcSoundConverter.App.Infrastructure.Audio;
 
 public static class PreviewDecoder
 {
