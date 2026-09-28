@@ -338,16 +338,18 @@ public sealed class MainViewModelTests : IDisposable
   private MainViewModel CreateViewModel(IConversionRunController? runController = null)
   {
     _settings.Settings.OutputDirectory = _temp.Path;
+    var queue = new QueueManager(_conversion, _log);
     return new MainViewModel(
       _settings,
       _filePicker,
       _folderLauncher,
       _conversion,
-      new PlaybackCoordinator(_playback, new ConversionRequestFactory(), _log),
-      new QueueManager(_conversion, _log),
+      new PlaybackCoordinator(_playback, _log),
+      queue,
       new ConversionRequestFactory(),
       new PresetCatalog(),
-      runController ?? new ConversionRunController(_conversion, new ConversionRequestFactory(), _log),
+      runController ?? new ConversionRunController(_conversion, _log),
+      new QueueConversionPresenter(queue),
       new WaveformLoader(_conversion, _log),
       _log);
   }

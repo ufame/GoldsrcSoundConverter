@@ -1,5 +1,4 @@
 using GoldsrcSoundConverter.App.Services;
-using GoldsrcSoundConverter.App.ViewModels;
 using GoldsrcSoundConverter.Core.Ffmpeg;
 using GoldsrcSoundConverter.Core.Models;
 
@@ -13,11 +12,12 @@ public sealed class FakeRunController : IConversionRunController
 
   public event EventHandler? BusyChanged;
 
-  public Task<ConversionRunSummary> RunAsync(
-    IReadOnlyList<QueueItemViewModel> items,
+  public Task<ConversionRunResult> RunAsync(
+    IReadOnlyList<ConversionWorkItem> workItems,
     ConversionOptions options,
-    Action<double>? onOverallProgress = null,
-    Action<BootstrapProgress>? onBootstrapProgress = null)
+    IProgress<ConversionProgress>? progress = null,
+    IProgress<ProbeResult>? probeProgress = null,
+    IProgress<BootstrapProgress>? bootstrapProgress = null)
   {
     throw new NotSupportedException("FakeRunController не запускает конвертацию.");
   }

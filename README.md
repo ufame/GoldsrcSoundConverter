@@ -104,6 +104,9 @@ Tests — GoldsrcSoundConverter.Core.Tests (net10.0) и
 
 - Core не знает про WPF, диалоги, `Application.Current` и не запускает процессы напрямую.
 - ViewModel не создаёт инфраструктуру (`new`), а получает сервисы через конструктор.
+- Application-сервисы (`ConversionService`, `ConversionRunController`) работают только с
+  Core-моделями; `QueueItemViewModel` мутируют только presentation-сервисы (`QueueManager`,
+  `WaveformLoader`, `QueueConversionPresenter`) и сама ViewModel.
 - UI-специфичный код (DWM-заголовок, drag&drop, автоскролл) остаётся в `MainWindow.xaml.cs`.
 
 ## Разработка

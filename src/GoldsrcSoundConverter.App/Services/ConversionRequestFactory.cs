@@ -1,4 +1,3 @@
-using GoldsrcSoundConverter.App.ViewModels;
 using GoldsrcSoundConverter.Core.Models;
 
 namespace GoldsrcSoundConverter.App.Services;
@@ -36,19 +35,4 @@ public sealed class ConversionRequestFactory : IConversionRequestFactory
     };
   }
 
-  public ConversionWorkItem CreateWorkItem(QueueItemViewModel item)
-  {
-    return new ConversionWorkItem(
-      item.Id,
-      item.SourcePath,
-      item.SourceRoot,
-      item.HasTrim ? TimeSpan.FromSeconds(item.TrimStartSeconds) : null,
-      item.HasTrim ? TimeSpan.FromSeconds(item.TrimEndSeconds) : null,
-      item.Info);
-  }
-
-  public IReadOnlyList<ConversionWorkItem> CreateWorkItems(IEnumerable<QueueItemViewModel> items)
-  {
-    return items.Select(CreateWorkItem).ToArray();
-  }
 }

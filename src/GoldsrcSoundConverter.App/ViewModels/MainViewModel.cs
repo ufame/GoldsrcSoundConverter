@@ -23,6 +23,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private readonly IConversionRequestFactory _requestFactory;
   private readonly IPresetCatalog _presetCatalog;
   private readonly IConversionRunController _runController;
+  private readonly IQueueConversionPresenter _presenter;
   private readonly IWaveformLoader _waveforms;
   private readonly ILogBuffer _log;
 
@@ -38,6 +39,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     IConversionRequestFactory requestFactory,
     IPresetCatalog presetCatalog,
     IConversionRunController runController,
+    IQueueConversionPresenter presenter,
     IWaveformLoader waveforms,
     ILogBuffer log)
   {
@@ -50,6 +52,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     _requestFactory = requestFactory;
     _presetCatalog = presetCatalog;
     _runController = runController;
+    _presenter = presenter;
     _waveforms = waveforms;
     _log = log;
     Items.CollectionChanged += (_, _) => StartCommand.NotifyCanExecuteChanged();
@@ -328,24 +331,29 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     try
     {
-      var summary = await _runController
+      var workItems = _presenter.BeginRun();
+
+      var result = await _runController
         .RunAsync(
-          Items.ToArray(),
+          workItems,
           options,
-          value => OverallProgress = value,
-          ApplyBootstrapProgress)
+          _presenter.CreateProgressHandler(value => OverallProgress = value),
+          _presenter.CreateProbeHandler(options),
+          new Progress<BootstrapProgress>(ApplyBootstrapProgress))
         .ConfigureAwait(true);
 
+      _presenter.Complete(result);
       UpdateFfmpegStatus();
 
-      if (summary.Cancelled)
+      if (result.Summary.Cancelled)
       {
         StatusText = "Конвертация отменена";
       }
       else
       {
         OverallProgress = 1;
-        StatusText = $"Готово: успешно {summary.Completed}, ошибок {summary.Failed}, пропущено {summary.Skipped}";
+        StatusText = $"Готово: успешно {result.Summary.Completed}, "
+          + $"ошибок {result.Summary.Failed}, пропущено {result.Summary.Skipped}";
       }
 
       AppendLog(StatusText);

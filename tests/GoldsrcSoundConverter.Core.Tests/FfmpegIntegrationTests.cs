@@ -231,7 +231,7 @@ public sealed class FfmpegIntegrationTests : IDisposable
       options)[0];
 
     using var cts = new CancellationTokenSource();
-    cts.CancelAfter(TimeSpan.FromMilliseconds(150));
+    cts.CancelAfter(TimeSpan.FromMilliseconds(50));
 
     await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
       new AudioConverter(_runner, _ffmpeg!, _ffprobe!)

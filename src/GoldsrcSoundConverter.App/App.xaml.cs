@@ -8,6 +8,7 @@ namespace GoldsrcSoundConverter.App;
 public partial class App : Application
 {
   private IHost? _host;
+  private IServiceScope? _windowScope;
 
   protected override void OnStartup(StartupEventArgs e)
   {
@@ -19,13 +20,16 @@ public partial class App : Application
     _host = builder.Build();
     _host.Start();
 
-    var window = _host.Services.GetRequiredService<MainWindow>();
+    _windowScope = _host.Services.CreateScope();
+    var window = _windowScope.ServiceProvider.GetRequiredService<MainWindow>();
     MainWindow = window;
     window.Show();
   }
 
   protected override void OnExit(ExitEventArgs e)
   {
+    _windowScope?.Dispose();
+
     if (_host is not null)
     {
       _host.StopAsync().GetAwaiter().GetResult();

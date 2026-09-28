@@ -33,7 +33,7 @@ public sealed class DisposeTests : IDisposable
   [Fact]
   public void ConversionRunControllerDisposesIdempotently()
   {
-    var controller = new ConversionRunController(_conversion, new ConversionRequestFactory(), _log);
+    var controller = new ConversionRunController(_conversion, _log);
 
     controller.Dispose();
     controller.Dispose();
@@ -74,16 +74,18 @@ public sealed class DisposeTests : IDisposable
   private MainViewModel CreateViewModel()
   {
     _settings.Settings.OutputDirectory = _temp.Path;
+    var queue = new QueueManager(_conversion, _log);
     return new MainViewModel(
       _settings,
       _filePicker,
       _folderLauncher,
       _conversion,
-      new PlaybackCoordinator(_playback, new ConversionRequestFactory(), _log),
-      new QueueManager(_conversion, _log),
+      new PlaybackCoordinator(_playback, _log),
+      queue,
       new ConversionRequestFactory(),
       new PresetCatalog(),
-      new ConversionRunController(_conversion, new ConversionRequestFactory(), _log),
+      new ConversionRunController(_conversion, _log),
+      new QueueConversionPresenter(queue),
       new WaveformLoader(_conversion, _log),
       _log);
   }

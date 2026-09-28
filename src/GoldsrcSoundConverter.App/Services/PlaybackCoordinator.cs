@@ -7,18 +7,13 @@ namespace GoldsrcSoundConverter.App.Services;
 public sealed class PlaybackCoordinator : IPlaybackCoordinator
 {
   private readonly IPlaybackController _playback;
-  private readonly IConversionRequestFactory _requestFactory;
   private readonly ILogBuffer _log;
 
   private double _volume = 1.0;
 
-  public PlaybackCoordinator(
-    IPlaybackController playback,
-    IConversionRequestFactory requestFactory,
-    ILogBuffer log)
+  public PlaybackCoordinator(IPlaybackController playback, ILogBuffer log)
   {
     _playback = playback;
-    _requestFactory = requestFactory;
     _log = log;
   }
 
@@ -82,7 +77,7 @@ public sealed class PlaybackCoordinator : IPlaybackCoordinator
   {
     try
     {
-      var workItem = _requestFactory.CreateWorkItem(item);
+      var workItem = item.ToWorkItem();
       await _playback
         .PrepareResultAsync(workItem, options, bootstrapProgress, _log.Add)
         .ConfigureAwait(true);

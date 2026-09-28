@@ -1,5 +1,4 @@
 using GoldsrcSoundConverter.App.Services;
-using GoldsrcSoundConverter.App.ViewModels;
 using GoldsrcSoundConverter.Core.Models;
 
 namespace GoldsrcSoundConverter.Tests;
@@ -55,35 +54,4 @@ public sealed class ConversionRequestFactoryTests
     Assert.Equal(44100, options.SampleRate);
   }
 
-  [Fact]
-  public void CreateWorkItemMapsItemState()
-  {
-    var item = new QueueItemViewModel(@"C:\in\clip.ogg", @"C:\in")
-    {
-      TrimStartSeconds = 1,
-      TrimEndSeconds = 4,
-    };
-    item.Info = new AudioInfo(item.SourcePath, "ogg", "vorbis", TimeSpan.FromSeconds(5), 44100, 2, 128000, 10);
-
-    var workItem = new ConversionRequestFactory().CreateWorkItem(item);
-
-    Assert.Equal(item.Id, workItem.Id);
-    Assert.Equal(item.SourcePath, workItem.SourcePath);
-    Assert.Equal(item.SourceRoot, workItem.SourceRoot);
-    Assert.Equal(TimeSpan.FromSeconds(1), workItem.TrimStart);
-    Assert.Equal(TimeSpan.FromSeconds(4), workItem.TrimEnd);
-    Assert.Same(item.Info, workItem.KnownInfo);
-  }
-
-  [Fact]
-  public void CreateWorkItemsSkipsTrimsWhenNotSet()
-  {
-    var item = new QueueItemViewModel(@"C:\in\clip.wav", null);
-
-    var workItems = new ConversionRequestFactory().CreateWorkItems(new[] { item });
-
-    var workItem = Assert.Single(workItems);
-    Assert.Null(workItem.TrimStart);
-    Assert.Null(workItem.TrimEnd);
-  }
 }

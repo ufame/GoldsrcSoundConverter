@@ -17,7 +17,7 @@ public sealed class PlaybackCoordinatorTests : IDisposable
 
   private PlaybackCoordinator CreateCoordinator()
   {
-    return new PlaybackCoordinator(_playback, new ConversionRequestFactory(), _log);
+    return new PlaybackCoordinator(_playback, _log);
   }
 
   private static QueueItemViewModel Item()

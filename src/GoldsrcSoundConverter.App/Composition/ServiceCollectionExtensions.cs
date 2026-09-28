@@ -23,15 +23,17 @@ public static class ServiceCollectionExtensions
     services.AddSingleton<IAudioPreview, AudioPreviewService>();
     services.AddSingleton<IPlaybackController, PlaybackController>();
     services.AddSingleton<ILogBuffer, LogBuffer>();
-    services.AddTransient<IQueueManager, QueueManager>();
     services.AddSingleton<IConversionRequestFactory, ConversionRequestFactory>();
     services.AddSingleton<IPresetCatalog, PresetCatalog>();
-    services.AddTransient<IConversionRunController, ConversionRunController>();
     services.AddSingleton<IPlaybackCoordinator, PlaybackCoordinator>();
     services.AddSingleton<IWaveformLoader, WaveformLoader>();
 
-    services.AddTransient<MainViewModel>();
-    services.AddTransient<MainWindow>();
+    // Per-window state: the view model, its queue and the run controller must share one instance.
+    services.AddScoped<IQueueManager, QueueManager>();
+    services.AddScoped<IConversionRunController, ConversionRunController>();
+    services.AddScoped<IQueueConversionPresenter, QueueConversionPresenter>();
+    services.AddScoped<MainViewModel>();
+    services.AddScoped<MainWindow>();
 
     return services;
   }
