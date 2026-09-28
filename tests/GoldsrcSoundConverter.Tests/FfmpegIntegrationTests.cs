@@ -125,7 +125,7 @@ public sealed class FfmpegIntegrationTests : IDisposable
       new[]
       {
         new ConversionJob(
-          0,
+          Guid.NewGuid(),
           source,
           null,
           TimeSpan.FromSeconds(1),
@@ -234,7 +234,7 @@ public sealed class FfmpegIntegrationTests : IDisposable
   private async Task<ConversionOutcome> ConvertAsync(string source, ConversionOptions options)
   {
     var job = new ConversionPlanner().Plan(
-      new[] { new ConversionJob(0, source, null, null, null) },
+      new[] { new ConversionJob(Guid.NewGuid(), source, null, null, null) },
       options)[0];
 
     var converter = new AudioConverter(_ffmpeg!, _ffprobe!);

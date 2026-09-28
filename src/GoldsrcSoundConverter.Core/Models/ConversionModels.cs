@@ -12,7 +12,7 @@ public enum ConversionStage
 }
 
 public sealed record ConversionJob(
-  int Index,
+  Guid Id,
   string SourcePath,
   string? SourceRoot,
   TimeSpan? TrimStart,
@@ -22,13 +22,13 @@ public sealed record ConversionJob(
 }
 
 public sealed record ConversionProgress(
-  int Index,
+  Guid JobId,
   ConversionStage Stage,
   double Percent,
   TimeSpan? Eta);
 
 public sealed record ConversionOutcome(
-  int Index,
+  Guid JobId,
   bool Success,
   bool Skipped,
   string? OutputPath,

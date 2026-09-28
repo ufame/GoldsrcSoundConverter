@@ -16,6 +16,8 @@ public partial class QueueItemViewModel : ObservableObject
 
   public int Index { get; }
 
+  public Guid Id { get; init; } = Guid.NewGuid();
+
   public string SourcePath { get; }
 
   public string? SourceRoot { get; }

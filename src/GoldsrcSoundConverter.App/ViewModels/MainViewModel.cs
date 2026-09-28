@@ -342,7 +342,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
       var options = BuildOptions();
       var jobs = new List<ConversionJob>();
-      var knownInfos = new Dictionary<int, AudioInfo>();
+      var knownInfos = new Dictionary<Guid, AudioInfo>();
 
       foreach (var item in Items)
       {
@@ -351,7 +351,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         item.OutputPath = null;
         item.Stage = ConversionStage.Pending;
         jobs.Add(new ConversionJob(
-          item.Index,
+          item.Id,
           item.SourcePath,
           item.SourceRoot,
           item.HasTrim ? TimeSpan.FromSeconds(item.TrimStartSeconds) : null,
@@ -359,7 +359,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (item.Info is not null)
         {
-          knownInfos[item.Index] = item.Info;
+          knownInfos[item.Id] = item.Info;
         }
       }
 
@@ -377,7 +377,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
       foreach (var outcome in outcomes)
       {
-        var item = Items.FirstOrDefault(i => i.Index == outcome.Index);
+        var item = Items.FirstOrDefault(i => i.Id == outcome.JobId);
         if (item is null)
         {
           continue;
@@ -524,7 +524,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         new[]
         {
           new ConversionJob(
-            0,
+            Guid.NewGuid(),
             item.SourcePath,
             null,
             item.HasTrim ? TimeSpan.FromSeconds(item.TrimStartSeconds) : null,
@@ -681,6 +681,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
       var replacement = new QueueItemViewModel(i, Items[i].SourcePath, Items[i].SourceRoot)
       {
+        Id = Items[i].Id,
         Info = Items[i].Info,
         Waveform = Items[i].Waveform,
         TrimStartSeconds = Items[i].TrimStartSeconds,
@@ -873,7 +874,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   private void ApplyProgress(ConversionProgress progress)
   {
-    var item = Items.FirstOrDefault(i => i.Index == progress.Index);
+    var item = Items.FirstOrDefault(i => i.Id == progress.JobId);
     if (item is null)
     {
       return;

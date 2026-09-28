@@ -31,8 +31,8 @@ public sealed class ConversionPlannerTests : IDisposable
     var planned = new ConversionPlanner().Plan(
       new[]
       {
-        new ConversionJob(0, first, null, null, null),
-        new ConversionJob(1, second, null, null, null),
+        new ConversionJob(Guid.NewGuid(), first, null, null, null),
+        new ConversionJob(Guid.NewGuid(), second, null, null, null),
       },
       Options);
 
@@ -45,8 +45,8 @@ public sealed class ConversionPlannerTests : IDisposable
   {
     var jobs = new[]
     {
-      new ConversionJob(0, Path.Combine(_temp.Path, "test!.wav"), null, null, null),
-      new ConversionJob(1, Path.Combine(_temp.Path, "test?.wav"), null, null, null),
+      new ConversionJob(Guid.NewGuid(), Path.Combine(_temp.Path, "test!.wav"), null, null, null),
+      new ConversionJob(Guid.NewGuid(), Path.Combine(_temp.Path, "test?.wav"), null, null, null),
     };
 
     var planned = new ConversionPlanner().Plan(jobs, Options);
@@ -59,7 +59,7 @@ public sealed class ConversionPlannerTests : IDisposable
   public void RenamesWhenTargetExistsOnDisk()
   {
     File.WriteAllText(Path.Combine(_temp.Path, "sound.wav"), "x");
-    var jobs = new[] { new ConversionJob(0, Path.Combine(_temp.Path, "sound.ogg"), null, null, null) };
+    var jobs = new[] { new ConversionJob(Guid.NewGuid(), Path.Combine(_temp.Path, "sound.ogg"), null, null, null) };
 
     var planned = new ConversionPlanner().Plan(jobs, Options);
 
@@ -74,8 +74,8 @@ public sealed class ConversionPlannerTests : IDisposable
     options.CollisionPolicy = CollisionPolicy.Skip;
     var jobs = new[]
     {
-      new ConversionJob(0, Path.Combine(_temp.Path, "dup!.wav"), null, null, null),
-      new ConversionJob(1, Path.Combine(_temp.Path, "dup?.wav"), null, null, null),
+      new ConversionJob(Guid.NewGuid(), Path.Combine(_temp.Path, "dup!.wav"), null, null, null),
+      new ConversionJob(Guid.NewGuid(), Path.Combine(_temp.Path, "dup?.wav"), null, null, null),
     };
 
     var planned = new ConversionPlanner().Plan(jobs, options);
@@ -91,8 +91,8 @@ public sealed class ConversionPlannerTests : IDisposable
     options.CollisionPolicy = CollisionPolicy.Skip;
     var jobs = new[]
     {
-      new ConversionJob(0, Path.Combine(_temp.Path, "dup!.wav"), null, null, null),
-      new ConversionJob(1, Path.Combine(_temp.Path, "dup?.wav"), null, null, null),
+      new ConversionJob(Guid.NewGuid(), Path.Combine(_temp.Path, "dup!.wav"), null, null, null),
+      new ConversionJob(Guid.NewGuid(), Path.Combine(_temp.Path, "dup?.wav"), null, null, null),
     };
 
     var planned = new ConversionPlanner().Plan(jobs, options);
@@ -109,8 +109,8 @@ public sealed class ConversionPlannerTests : IDisposable
     options.CollisionPolicy = CollisionPolicy.Overwrite;
     var jobs = new[]
     {
-      new ConversionJob(0, Path.Combine(_temp.Path, "same!.wav"), null, null, null),
-      new ConversionJob(1, Path.Combine(_temp.Path, "same?.wav"), null, null, null),
+      new ConversionJob(Guid.NewGuid(), Path.Combine(_temp.Path, "same!.wav"), null, null, null),
+      new ConversionJob(Guid.NewGuid(), Path.Combine(_temp.Path, "same?.wav"), null, null, null),
     };
 
     var planned = new ConversionPlanner().Plan(jobs, options);
@@ -135,8 +135,8 @@ public sealed class ConversionPlannerTests : IDisposable
     var planned = new ConversionPlanner().Plan(
       new[]
       {
-        new ConversionJob(0, first, root, null, null),
-        new ConversionJob(1, second, root, null, null),
+        new ConversionJob(Guid.NewGuid(), first, root, null, null),
+        new ConversionJob(Guid.NewGuid(), second, root, null, null),
       },
       options);
 
@@ -145,13 +145,14 @@ public sealed class ConversionPlannerTests : IDisposable
   }
 
   [Fact]
-  public void DoesNotMutateInputJobs()
+  public void DoesNotMutateInputJobsAndKeepsStableId()
   {
-    var input = new ConversionJob(0, Path.Combine(_temp.Path, "voice.ogg"), null, null, null);
+    var input = new ConversionJob(Guid.NewGuid(), Path.Combine(_temp.Path, "voice.ogg"), null, null, null);
 
     var planned = new ConversionPlanner().Plan(new[] { input }, Options);
 
     Assert.Null(input.OutputPath);
     Assert.NotNull(planned[0].OutputPath);
+    Assert.Equal(input.Id, planned[0].Id);
   }
 }

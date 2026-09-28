@@ -14,7 +14,7 @@ public sealed class BatchConverter
   public async Task<IReadOnlyList<ConversionOutcome>> RunAsync(
     IReadOnlyList<ConversionJob> jobs,
     ConversionOptions options,
-    IReadOnlyDictionary<int, AudioInfo>? knownInfos = null,
+    IReadOnlyDictionary<Guid, AudioInfo>? knownInfos = null,
     IProgress<ConversionProgress>? progress = null,
     Action<string>? log = null,
     CancellationToken cancellationToken = default)
@@ -33,7 +33,7 @@ public sealed class BatchConverter
       {
         var job = jobs[index];
         AudioInfo? knownInfo = null;
-        knownInfos?.TryGetValue(job.Index, out knownInfo);
+        knownInfos?.TryGetValue(job.Id, out knownInfo);
         results[index] = await _converter
           .ConvertAsync(job, options, knownInfo, progress, log, token)
           .ConfigureAwait(false);
@@ -42,7 +42,6 @@ public sealed class BatchConverter
     return results
       .Where(r => r is not null)
       .Select(r => r!)
-      .OrderBy(r => r.Index)
       .ToArray();
   }
 }
