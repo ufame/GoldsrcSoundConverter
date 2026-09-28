@@ -154,6 +154,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
   [ObservableProperty]
   [NotifyCanExecuteChangedFor(nameof(StartCommand))]
   [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
+  [NotifyCanExecuteChangedFor(nameof(AddFilesCommand))]
+  [NotifyCanExecuteChangedFor(nameof(AddFolderCommand))]
+  [NotifyCanExecuteChangedFor(nameof(RemoveSelectedCommand))]
+  [NotifyCanExecuteChangedFor(nameof(ClearCommand))]
+  [NotifyPropertyChangedFor(nameof(CanEditQueue))]
   private bool _isBusy;
 
   [ObservableProperty]
@@ -196,6 +201,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   public bool CanStart => !IsBusy && Items.Count > 0;
 
+  public bool CanEditQueue => !IsBusy;
+
   public void Dispose()
   {
     _timer.Stop();
@@ -205,6 +212,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   public void AddPaths(IEnumerable<string> paths)
   {
+    if (IsBusy)
+    {
+      StatusText = "Дождитесь окончания конвертации";
+      return;
+    }
+
     var added = 0;
 
     foreach (var path in paths)
@@ -249,7 +262,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     SaveSettingsCore(width, height);
   }
 
-  [RelayCommand]
+  [RelayCommand(CanExecute = nameof(CanEditQueue))]
   private void AddFiles()
   {
     var dialog = new OpenFileDialog
@@ -265,7 +278,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
   }
 
-  [RelayCommand]
+  [RelayCommand(CanExecute = nameof(CanEditQueue))]
   private void AddFolder()
   {
     var dialog = new OpenFolderDialog
@@ -279,7 +292,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
   }
 
-  [RelayCommand]
+  [RelayCommand(CanExecute = nameof(CanEditQueue))]
   private void RemoveSelected()
   {
     if (SelectedItem is null)
@@ -292,7 +305,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     SelectedItem = null;
   }
 
-  [RelayCommand]
+  [RelayCommand(CanExecute = nameof(CanEditQueue))]
   private void Clear()
   {
     Items.Clear();
