@@ -22,9 +22,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private readonly IQueueManager _queue;
   private readonly IConversionRequestFactory _requestFactory;
   private readonly IPresetCatalog _presetCatalog;
+  private readonly IConversionRunController _runController;
   private readonly ILogBuffer _log;
 
-  private CancellationTokenSource? _conversionCts;
   private bool _applyingPreset;
 
   public MainViewModel(
@@ -36,6 +36,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     IQueueManager queue,
     IConversionRequestFactory requestFactory,
     IPresetCatalog presetCatalog,
+    IConversionRunController runController,
     ILogBuffer log)
   {
     _settingsStore = settingsStore;
@@ -46,9 +47,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     _queue = queue;
     _requestFactory = requestFactory;
     _presetCatalog = presetCatalog;
+    _runController = runController;
     _log = log;
     Items.CollectionChanged += (_, _) => StartCommand.NotifyCanExecuteChanged();
     _playback.PositionChanged += OnPlaybackPositionChanged;
+    _runController.BusyChanged += (_, _) => IsBusy = _runController.IsBusy;
 
     var settings = _settingsStore.Load();
     InitialWindowWidth = settings.WindowWidth > 400 ? settings.WindowWidth : 1400;
@@ -213,7 +216,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   public void Dispose()
   {
-    _conversionCts?.Dispose();
     GC.SuppressFinalize(this);
   }
 
@@ -306,103 +308,48 @@ public partial class MainViewModel : ObservableObject, IDisposable
       return;
     }
 
-    IsBusy = true;
     OverallProgress = 0;
-    _conversionCts = new CancellationTokenSource();
-    var cancellationToken = _conversionCts.Token;
+    StatusText = "Подготовка FFmpeg…";
+
+    if (SelectedItem is not null)
+    {
+      _ = LoadWaveformAsync(SelectedItem);
+    }
+
+    var options = BuildOptions();
+    StatusText = $"Конвертация: {Items.Count} файл(ов)…";
 
     try
     {
-      StatusText = "Подготовка FFmpeg…";
-
-      foreach (var item in Items)
-      {
-        item.Progress = 0;
-        item.Error = null;
-        item.OutputPath = null;
-        item.Stage = ConversionStage.Pending;
-      }
-
-      var workItems = _requestFactory.CreateWorkItems(Items);
-
-      if (SelectedItem is not null)
-      {
-        _ = LoadWaveformAsync(SelectedItem);
-      }
-
-      var options = BuildOptions();
-      StatusText = $"Конвертация: {workItems.Count} файл(ов)…";
-
-      var progress = new Progress<ConversionProgress>(ApplyProgress);
-      var probeProgress = new Progress<ProbeResult>(ApplyProbeResult);
-      var bootstrapProgress = new Progress<BootstrapProgress>(ApplyBootstrapProgress);
-
-      var result = await _conversionService
-        .ConvertAsync(workItems, options, progress, probeProgress, bootstrapProgress, AppendLog, cancellationToken)
+      var summary = await _runController
+        .RunAsync(
+          Items.ToArray(),
+          options,
+          value => OverallProgress = value,
+          ApplyBootstrapProgress)
         .ConfigureAwait(true);
 
       UpdateFfmpegStatus();
 
-      var completed = 0;
-      var failed = 0;
-      var skipped = 0;
-
-      foreach (var outcome in result.Outcomes)
+      if (summary.Cancelled)
       {
-        var item = Items.FirstOrDefault(i => i.Id == outcome.JobId);
-        if (item is null)
-        {
-          continue;
-        }
-
-        if (outcome.Success && outcome.Skipped)
-        {
-          item.Stage = ConversionStage.Skipped;
-          skipped++;
-        }
-        else if (outcome.Success)
-        {
-          item.Stage = ConversionStage.Completed;
-          item.Progress = 1;
-          item.OutputPath = outcome.OutputPath;
-          completed++;
-        }
-        else
-        {
-          item.Stage = ConversionStage.Failed;
-          item.Error = outcome.Error;
-          failed++;
-        }
+        StatusText = "Конвертация отменена";
+      }
+      else
+      {
+        OverallProgress = 1;
+        StatusText = $"Готово: успешно {summary.Completed}, ошибок {summary.Failed}, пропущено {summary.Skipped}";
       }
 
-      OverallProgress = 1;
-      StatusText = $"Готово: успешно {completed}, ошибок {failed}, пропущено {skipped}";
-      AppendLog(StatusText);
-    }
-    catch (OperationCanceledException)
-    {
-      foreach (var item in Items.Where(i => i.Stage is ConversionStage.Pending
-        or ConversionStage.Probing
-        or ConversionStage.Normalizing
-        or ConversionStage.Converting))
-      {
-        item.Stage = ConversionStage.Pending;
-        item.Progress = 0;
-      }
-
-      StatusText = "Конвертация отменена";
       AppendLog(StatusText);
     }
     catch (Exception ex)
     {
       StatusText = "Ошибка: " + ex.Message;
-      AppendLog("Ошибка: " + ex.Message);
+      AppendLog(StatusText);
     }
     finally
     {
-      IsBusy = false;
-      _conversionCts?.Dispose();
-      _conversionCts = null;
       SaveSettingsCore(null, null);
     }
   }
@@ -411,7 +358,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private void Cancel()
   {
     StatusText = "Отмена…";
-    _conversionCts?.Cancel();
+    _runController.Cancel();
   }
 
   [RelayCommand(CanExecute = nameof(HasSelection))]
@@ -631,18 +578,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
   }
 
-  private void ApplyProbeResult(ProbeResult probe)
-  {
-    var item = Items.FirstOrDefault(i => i.Id == probe.Id);
-    if (item is null || item.Info is not null)
-    {
-      return;
-    }
-
-    item.Info = probe.Info;
-    item.UpdateTargetSize(BuildOptions());
-  }
-
   private void ApplyBootstrapProgress(BootstrapProgress progress)
   {
     FfmpegStatusText = progress.Percent is double percent
@@ -652,28 +587,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     if (progress.Percent is double value)
     {
       OverallProgress = value;
-    }
-  }
-
-  private void ApplyProgress(ConversionProgress progress)
-  {
-    var item = Items.FirstOrDefault(i => i.Id == progress.JobId);
-    if (item is null)
-    {
-      return;
-    }
-
-    item.Stage = progress.Stage;
-    item.Progress = progress.Percent;
-
-    if (progress.Stage == ConversionStage.Converting)
-    {
-      var finished = Items.Count(i => i.Stage is ConversionStage.Completed
-        or ConversionStage.Skipped
-        or ConversionStage.Failed);
-      OverallProgress = Items.Count == 0
-        ? 0
-        : Math.Clamp((finished + progress.Percent) / Items.Count, 0, 1);
     }
   }
 

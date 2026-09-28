@@ -318,6 +318,7 @@ public sealed class MainViewModelTests : IDisposable
       new QueueManager(_conversion, _log),
       new ConversionRequestFactory(),
       new PresetCatalog(),
+      new ConversionRunController(_conversion, new ConversionRequestFactory(), _log),
       _log);
   }
 

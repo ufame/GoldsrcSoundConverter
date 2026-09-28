@@ -31,6 +31,7 @@ public partial class App : Application
     services.AddTransient<IQueueManager, QueueManager>();
     services.AddSingleton<IConversionRequestFactory, ConversionRequestFactory>();
     services.AddSingleton<IPresetCatalog, PresetCatalog>();
+    services.AddTransient<IConversionRunController, ConversionRunController>();
     services.AddTransient<MainViewModel>();
     services.AddTransient<MainWindow>();
 

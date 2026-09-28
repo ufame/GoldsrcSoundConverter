@@ -26,6 +26,8 @@ public sealed class FakeConversionService : IConversionService
 
   public TaskCompletionSource? ConversionGate { get; set; }
 
+  public List<ProbeResult> ProbeResults { get; } = new();
+
   public Exception? PrepareException { get; set; }
 
   public WaveformData? Waveform { get; set; }
@@ -129,10 +131,17 @@ public sealed class FakeConversionService : IConversionService
       await ConversionGate.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    foreach (var probe in ProbeResults)
+    {
+      probeProgress?.Report(probe);
+    }
+
     var outcomes = new List<ConversionOutcome>(workItems.Count);
     foreach (var workItem in workItems)
     {
       cancellationToken.ThrowIfCancellationRequested();
+
+      progress?.Report(new ConversionProgress(workItem.Id, ConversionStage.Converting, 0.5, null));
 
       var outcome = OutcomeFactory?.Invoke(workItem)
         ?? new ConversionOutcome(workItem.Id, true, false, workItem.SourcePath + ".out.wav", null, null);
