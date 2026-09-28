@@ -11,15 +11,20 @@ public sealed class SettingsStore
     Converters = { new JsonStringEnumConverter() },
   };
 
-  public SettingsStore(string? filePath = null)
+  private readonly Action<string>? _log;
+
+  public SettingsStore(string? filePath = null, Action<string>? log = null)
   {
     FilePath = filePath ?? Path.Combine(
       Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
       "GoldsrcSoundConverter",
       "settings.json");
+    _log = log;
   }
 
   public string FilePath { get; }
+
+  public string BackupFilePath => FilePath + ".bak";
 
   public AppSettings Load()
   {
@@ -33,8 +38,12 @@ public sealed class SettingsStore
       var json = File.ReadAllText(FilePath);
       return JsonSerializer.Deserialize<AppSettings>(json, Options) ?? new AppSettings();
     }
-    catch
+    catch (Exception ex)
     {
+      _log?.Invoke(
+        $"Не удалось прочитать настройки: {ex.Message}. "
+        + $"Повреждённый файл сохранён как {BackupFilePath}.");
+      BackupCorruptFile();
       return new AppSettings();
     }
   }
@@ -47,6 +56,71 @@ public sealed class SettingsStore
       Directory.CreateDirectory(directory);
     }
 
-    File.WriteAllText(FilePath, JsonSerializer.Serialize(settings, Options));
+    WriteAtomically(JsonSerializer.Serialize(settings, Options));
+  }
+
+  private void BackupCorruptFile()
+  {
+    try
+    {
+      if (File.Exists(FilePath))
+      {
+        File.Move(FilePath, BackupFilePath, overwrite: true);
+      }
+    }
+    catch (Exception ex)
+    {
+      _log?.Invoke($"Не удалось создать резервную копию настроек: {ex.Message}");
+    }
+  }
+
+  private void WriteAtomically(string json)
+  {
+    var tempPath = FilePath + ".tmp";
+    try
+    {
+      using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+      using (var writer = new StreamWriter(stream))
+      {
+        writer.Write(json);
+        writer.Flush();
+        stream.Flush(flushToDisk: true);
+      }
+
+      if (File.Exists(FilePath))
+      {
+        try
+        {
+          File.Replace(tempPath, FilePath, destinationBackupFileName: null);
+        }
+        catch (IOException)
+        {
+          File.Move(tempPath, FilePath, overwrite: true);
+        }
+      }
+      else
+      {
+        File.Move(tempPath, FilePath);
+      }
+    }
+    catch
+    {
+      TryDelete(tempPath);
+      throw;
+    }
+  }
+
+  private static void TryDelete(string path)
+  {
+    try
+    {
+      if (File.Exists(path))
+      {
+        File.Delete(path);
+      }
+    }
+    catch
+    {
+    }
   }
 }
