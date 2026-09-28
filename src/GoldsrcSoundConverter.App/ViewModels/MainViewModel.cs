@@ -5,19 +5,20 @@ using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GoldsrcSoundConverter.App.Infrastructure.FilePicker;
 using GoldsrcSoundConverter.App.Services;
 using GoldsrcSoundConverter.Core.Audio;
 using GoldsrcSoundConverter.Core.Ffmpeg;
 using GoldsrcSoundConverter.Core.Files;
 using GoldsrcSoundConverter.Core.Models;
 using GoldsrcSoundConverter.Core.Settings;
-using Microsoft.Win32;
 
 namespace GoldsrcSoundConverter.App.ViewModels;
 
 public partial class MainViewModel : ObservableObject, IDisposable
 {
   private readonly ISettingsStore _settingsStore;
+  private readonly IFilePicker _filePicker;
   private readonly AudioPreviewService _preview = new();
   private readonly SemaphoreSlim _ffmpegLock = new(1, 1);
   private readonly SemaphoreSlim _probeGate = new(3, 3);
@@ -30,9 +31,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private bool _playSelection;
   private double? _stopAtSeconds;
 
-  public MainViewModel(ISettingsStore settingsStore)
+  public MainViewModel(ISettingsStore settingsStore, IFilePicker filePicker)
   {
     _settingsStore = settingsStore;
+    _filePicker = filePicker;
     Items.CollectionChanged += (_, _) => StartCommand.NotifyCanExecuteChanged();
     _preview.PlaybackStopped += OnPlaybackStopped;
 
@@ -266,30 +268,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
   [RelayCommand(CanExecute = nameof(CanEditQueue))]
   private void AddFiles()
   {
-    var dialog = new OpenFileDialog
+    var files = _filePicker.PickFiles();
+    if (files.Count > 0)
     {
-      Title = "Выберите звуковые файлы",
-      Multiselect = true,
-      Filter = AudioFileTypes.FileDialogFilter,
-    };
-
-    if (dialog.ShowDialog() == true)
-    {
-      AddPaths(dialog.FileNames);
+      AddPaths(files);
     }
   }
 
   [RelayCommand(CanExecute = nameof(CanEditQueue))]
   private void AddFolder()
   {
-    var dialog = new OpenFolderDialog
+    var folder = _filePicker.PickFolder("Выберите папку со звуками");
+    if (folder is not null)
     {
-      Title = "Выберите папку со звуками",
-    };
-
-    if (dialog.ShowDialog() == true)
-    {
-      AddPaths(new[] { dialog.FolderName });
+      AddPaths(new[] { folder });
     }
   }
 
@@ -613,34 +605,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
   [RelayCommand]
   private void BrowseOutputDirectory()
   {
-    var dialog = new OpenFolderDialog
+    var folder = _filePicker.PickFolder("Папка для результатов", OutputDirectory);
+    if (folder is not null)
     {
-      Title = "Папка для результатов",
-    };
-
-    if (Directory.Exists(OutputDirectory))
-    {
-      dialog.InitialDirectory = OutputDirectory;
-    }
-
-    if (dialog.ShowDialog() == true)
-    {
-      OutputDirectory = dialog.FolderName;
+      OutputDirectory = folder;
     }
   }
 
   [RelayCommand]
   private void BrowseFfmpeg()
   {
-    var dialog = new OpenFileDialog
+    var file = _filePicker.PickFile("Выберите ffmpeg.exe", "ffmpeg.exe|ffmpeg.exe|Все файлы|*.*");
+    if (file is not null)
     {
-      Title = "Выберите ffmpeg.exe",
-      Filter = "ffmpeg.exe|ffmpeg.exe|Все файлы|*.*",
-    };
-
-    if (dialog.ShowDialog() == true)
-    {
-      FfmpegCustomPath = dialog.FileName;
+      FfmpegCustomPath = file;
       _ffmpegPath = null;
       _ffprobePath = null;
       UpdateFfmpegStatus();

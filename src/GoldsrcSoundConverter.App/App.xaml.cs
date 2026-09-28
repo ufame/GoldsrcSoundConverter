@@ -1,4 +1,5 @@
 ﻿using System.Windows;
+using GoldsrcSoundConverter.App.Infrastructure.FilePicker;
 using GoldsrcSoundConverter.App.ViewModels;
 using GoldsrcSoundConverter.Core.Settings;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,6 +16,7 @@ public partial class App : Application
 
     var services = new ServiceCollection();
     services.AddSingleton<ISettingsStore>(new SettingsStore());
+    services.AddSingleton<IFilePicker, WpfFilePicker>();
     services.AddTransient<MainViewModel>();
     services.AddTransient<MainWindow>();
 
