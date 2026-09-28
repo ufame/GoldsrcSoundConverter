@@ -94,6 +94,122 @@ public sealed class OutputPathResolverTests : IDisposable
     Assert.Equal(Path.Combine(output, "weapons", "rifle", "shot.wav"), result);
   }
 
+  [Fact]
+  public void FileInRootHasNoRelativeDirectory()
+  {
+    var root = Path.Combine(_temp.Path, "sounds");
+    Directory.CreateDirectory(root);
+    var source = Path.Combine(root, "shot.wav");
+    File.WriteAllText(source, "x");
+    var output = Path.Combine(_temp.Path, "out");
+    Directory.CreateDirectory(output);
+
+    var options = Options;
+    options.PreserveStructure = true;
+    options.OutputDirectory = output;
+
+    var result = OutputPathResolver.Resolve(source, root, options);
+
+    Assert.Equal(Path.Combine(output, "shot.wav"), result);
+  }
+
+  [Fact]
+  public void SiblingDirectoryWithSharedPrefixIsNotInsideRoot()
+  {
+    var root = Path.Combine(_temp.Path, "sounds");
+    var sibling = Path.Combine(_temp.Path, "sounds_backup");
+    Directory.CreateDirectory(root);
+    Directory.CreateDirectory(sibling);
+    var source = Path.Combine(sibling, "shot.wav");
+    File.WriteAllText(source, "x");
+    var output = Path.Combine(_temp.Path, "out");
+    Directory.CreateDirectory(output);
+
+    var options = Options;
+    options.PreserveStructure = true;
+    options.OutputDirectory = output;
+
+    var result = OutputPathResolver.Resolve(source, root, options);
+
+    Assert.Equal(Path.Combine(output, "shot.wav"), result);
+  }
+
+  [Fact]
+  public void OutsideRootIsFlattenedToOutputDirectory()
+  {
+    var root = Path.Combine(_temp.Path, "sounds");
+    var other = Path.Combine(_temp.Path, "other");
+    Directory.CreateDirectory(root);
+    Directory.CreateDirectory(other);
+    var source = Path.Combine(other, "shot.wav");
+    File.WriteAllText(source, "x");
+    var output = Path.Combine(_temp.Path, "out");
+    Directory.CreateDirectory(output);
+
+    var options = Options;
+    options.PreserveStructure = true;
+    options.OutputDirectory = output;
+
+    var result = OutputPathResolver.Resolve(source, root, options);
+
+    Assert.Equal(Path.Combine(output, "shot.wav"), result);
+  }
+
+  [Fact]
+  public void RootComparisonIsCaseInsensitive()
+  {
+    var root = Path.Combine(_temp.Path, "sounds");
+    var nested = Path.Combine(root, "weapons");
+    Directory.CreateDirectory(nested);
+    var source = Path.Combine(nested, "shot.wav");
+    File.WriteAllText(source, "x");
+    var output = Path.Combine(_temp.Path, "out");
+    Directory.CreateDirectory(output);
+
+    var options = Options;
+    options.PreserveStructure = true;
+    options.OutputDirectory = output;
+
+    var result = OutputPathResolver.Resolve(source, Path.Combine(_temp.Path, "SOUNDS"), options);
+
+    Assert.Equal(Path.Combine(output, "weapons", "shot.wav"), result);
+  }
+
+  [Fact]
+  public void RootWithTrailingSeparatorIsAccepted()
+  {
+    var root = Path.Combine(_temp.Path, "sounds");
+    var nested = Path.Combine(root, "weapons");
+    Directory.CreateDirectory(nested);
+    var source = Path.Combine(nested, "shot.wav");
+    File.WriteAllText(source, "x");
+    var output = Path.Combine(_temp.Path, "out");
+    Directory.CreateDirectory(output);
+
+    var options = Options;
+    options.PreserveStructure = true;
+    options.OutputDirectory = output;
+
+    var result = OutputPathResolver.Resolve(
+      source,
+      root + Path.DirectorySeparatorChar,
+      options);
+
+    Assert.Equal(Path.Combine(output, "weapons", "shot.wav"), result);
+  }
+
+  [Fact]
+  public void ChangesExtensionAccordingToFormat()
+  {
+    var source = CreateFile("theme.ogg");
+    var options = Options;
+    options.Format = OutputAudioFormat.Mp3;
+
+    var result = OutputPathResolver.Resolve(source, null, options);
+
+    Assert.Equal(Path.Combine(_temp.Path, "theme.mp3"), result);
+  }
+
   private string CreateFile(string name)
   {
     var path = Path.Combine(_temp.Path, name);
