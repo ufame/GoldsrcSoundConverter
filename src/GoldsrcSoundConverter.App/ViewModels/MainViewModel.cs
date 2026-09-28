@@ -54,7 +54,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     _log = log;
     Items.CollectionChanged += (_, _) => StartCommand.NotifyCanExecuteChanged();
     _playback.PositionChanged += OnPlaybackPositionChanged;
-    _runController.BusyChanged += (_, _) => IsBusy = _runController.IsBusy;
+    _runController.BusyChanged += OnRunControllerBusyChanged;
 
     var settings = _settingsStore.Load();
     InitialWindowWidth = settings.WindowWidth > 400 ? settings.WindowWidth : 1400;
@@ -219,6 +219,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   public void Dispose()
   {
+    _playback.PositionChanged -= OnPlaybackPositionChanged;
+    _runController.BusyChanged -= OnRunControllerBusyChanged;
+    _runController.Dispose();
     GC.SuppressFinalize(this);
   }
 
@@ -515,6 +518,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
       OverallProgress = value;
     }
+  }
+
+  private void OnRunControllerBusyChanged(object? sender, EventArgs e)
+  {
+    IsBusy = _runController.IsBusy;
   }
 
   private void OnPlaybackPositionChanged(object? sender, EventArgs e)

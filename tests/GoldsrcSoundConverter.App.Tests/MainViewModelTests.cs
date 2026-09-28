@@ -307,7 +307,35 @@ public sealed class MainViewModelTests : IDisposable
     Assert.NotNull(vm.Items[0].Waveform);
   }
 
-  private MainViewModel CreateViewModel()
+  [Fact]
+  public void DisposeDetachesFromPlaybackEvents()
+  {
+    var vm = CreateViewModel();
+
+    vm.Dispose();
+
+    _playback.PositionSeconds = 42;
+    _playback.RaisePositionChanged();
+
+    Assert.Equal(0, vm.PlaybackPositionSeconds, 3);
+  }
+
+  [Fact]
+  public void DisposeDetachesFromRunControllerAndDisposesIt()
+  {
+    var runController = new FakeRunController();
+    var vm = CreateViewModel(runController);
+
+    vm.Dispose();
+
+    runController.IsBusy = true;
+    runController.RaiseBusyChanged();
+
+    Assert.False(vm.IsBusy);
+    Assert.True(runController.Disposed);
+  }
+
+  private MainViewModel CreateViewModel(IConversionRunController? runController = null)
   {
     _settings.Settings.OutputDirectory = _temp.Path;
     return new MainViewModel(
@@ -319,7 +347,7 @@ public sealed class MainViewModelTests : IDisposable
       new QueueManager(_conversion, _log),
       new ConversionRequestFactory(),
       new PresetCatalog(),
-      new ConversionRunController(_conversion, new ConversionRequestFactory(), _log),
+      runController ?? new ConversionRunController(_conversion, new ConversionRequestFactory(), _log),
       new WaveformLoader(_conversion, _log),
       _log);
   }
