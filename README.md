@@ -82,14 +82,22 @@ dotnet test
 
 ```
 Core  — бизнес-логика: AudioConverter/BatchConverter/ConversionPlanner,
-        FFmpeg-обвязка, настройки, пресеты, волновая форма. Не зависит от WPF.
+        InputFileDiscoverer, Ffmpeg-обвязка и манифест FFmpeg, настройки,
+        пресеты, волновая форма, кэш предпросмотра. Не зависит от WPF.
 
-App   — WPF и платформенные интеграции: ViewModels, ConversionService,
-        PlaybackController, WpfFilePicker, WindowsFolderLauncher,
-        AudioPreviewService (NAudio), DI-композиция в App.xaml.cs.
+App   — WPF и платформенные интеграции:
+        ViewModels/{MainViewModel, QueueItemViewModel};
+        Services/{ConversionService, ConversionRunController, QueueManager,
+                  PlaybackCoordinator, WaveformLoader, PresetCatalog,
+                  ConversionRequestFactory, LogBuffer};
+        Infrastructure/{Audio (NAudio), FilePicker, Shell};
+        Composition/ServiceCollectionExtensions — DI-композиция,
+        App.xaml.cs — Generic Host.
 
-Tests — unit-тесты Core и App-слоя на fake-реализациях интерфейсов,
-        интеграционные тесты с реальным FFmpeg.
+Tests — GoldsrcSoundConverter.Core.Tests (net10.0) и
+        GoldsrcSoundConverter.App.Tests (net10.0-windows) на fake-сервисах;
+        интеграционные тесты с реальным FFmpeg помечены категорией Integration
+        и пропускаются, если FFmpeg недоступен.
 ```
 
 Правила зависимостей:
@@ -103,22 +111,25 @@ Tests — unit-тесты Core и App-слоя на fake-реализациях 
 ```powershell
 dotnet restore
 dotnet build
-dotnet test --filter "Category!=Integration"   # unit-тесты
-dotnet test --filter "Category=Integration"    # интеграционные тесты (нужен FFmpeg)
+dotnet test                                      # всё, интеграционные пропустятся без FFmpeg
+dotnet test --filter "Category!=Integration"     # только unit-тесты
+dotnet test --filter "Category=Integration"      # только интеграционные (нужен FFmpeg)
 ```
 
 Интеграционные тесты ищут FFmpeg в переменной `GSC_FFMPEG`, затем в
 `%LocalAppData%\GoldsrcSoundConverter\ffmpeg`, затем в `PATH`.
 
-В проекте включён `AnalysisLevel=latest-recommended`; сборка должна проходить
-без предупреждений (CA1716 подавлен: имена вида `Stop` заданы контрактами).
+В проекте включены `AnalysisLevel=latest-recommended` и
+`EnforceCodeStyleInBuild`; сборка должна проходить без предупреждений
+(CA1716 подавлен: имена вида `Stop` заданы контрактами).
 
 ## Политика FFmpeg
 
-Версия FFmpeg зафиксирована константами в `FfmpegBootstrapper`
-(`Version`, `DownloadUrl`, `ArchiveSha256`). Архив скачивается с GitHub-релизов
-gyan.dev и всегда проверяется по SHA-256. Обновление версии — отдельное осознанное
-изменение: version, URL и checksum меняются вместе.
+Версия FFmpeg зафиксирована в `src/GoldsrcSoundConverter.Core/Ffmpeg/ffmpeg.manifest.json`
+(version/url/sha256), который встраивается в сборку как ресурс
+(`FfmpegManifestLoader`). Архив скачивается с GitHub-релизов gyan.dev и всегда
+проверяется по SHA-256. Обновление версии — отдельное осознанное изменение:
+version, URL и checksum меняются вместе; CI читает тот же манифест.
 
 ## Непрерывная интеграция
 
@@ -126,3 +137,10 @@ gyan.dev и всегда проверяется по SHA-256. Обновлени
 Release-сборку и полный прогон тестов (включая интеграционные). CI скачивает ту же
 зафиксированную сборку FFmpeg, проверяет её SHA-256 и передаёт путь через
 `GSC_FFMPEG`.
+
+## Релиз
+
+Тег вида `v1.1.0` запускает `.github/workflows/release.yml`: workflow собирает
+архив через `publish.ps1 -SkipTests` и создаёт GitHub Release с
+`GoldsrcSoundConverter-<версия>-win-x64.zip`. Локально тот же результат даёт
+`.\publish.ps1 -Version 1.1.0`.
