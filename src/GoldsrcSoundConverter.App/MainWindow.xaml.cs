@@ -77,7 +77,7 @@ public partial class MainWindow : Window
   {
     if (e.Data.GetData(DataFormats.FileDrop) is string[] paths)
     {
-      _viewModel.AddPaths(paths);
+      _viewModel.Queue.AddPaths(paths);
     }
   }
 

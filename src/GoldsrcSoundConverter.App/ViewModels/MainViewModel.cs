@@ -1,4 +1,5 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -19,12 +20,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private readonly IFolderLauncher _folderLauncher;
   private readonly IConversionService _conversionService;
   private readonly IPlaybackCoordinator _playback;
-  private readonly IQueueManager _queue;
   private readonly IConversionRequestFactory _requestFactory;
   private readonly IPresetCatalog _presetCatalog;
   private readonly IConversionRunController _runController;
   private readonly IQueueConversionPresenter _presenter;
-  private readonly IWaveformLoader _waveforms;
   private readonly ILogBuffer _log;
 
   private bool _applyingPreset;
@@ -35,12 +34,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     IFolderLauncher folderLauncher,
     IConversionService conversionService,
     IPlaybackCoordinator playback,
-    IQueueManager queue,
+    QueueViewModel queue,
     IConversionRequestFactory requestFactory,
     IPresetCatalog presetCatalog,
     IConversionRunController runController,
     IQueueConversionPresenter presenter,
-    IWaveformLoader waveforms,
     ILogBuffer log)
   {
     _settingsStore = settingsStore;
@@ -48,14 +46,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
     _folderLauncher = folderLauncher;
     _conversionService = conversionService;
     _playback = playback;
-    _queue = queue;
+    Queue = queue;
     _requestFactory = requestFactory;
     _presetCatalog = presetCatalog;
     _runController = runController;
     _presenter = presenter;
-    _waveforms = waveforms;
     _log = log;
-    Items.CollectionChanged += (_, _) => StartCommand.NotifyCanExecuteChanged();
+
+    Queue.ItemsChanged += OnQueueItemsChanged;
+    Queue.ItemsAdded += OnQueueItemsAdded;
+    Queue.ItemUpdated += OnQueueItemUpdated;
+    Queue.StatusChanged += OnQueueStatusChanged;
+    Queue.PropertyChanged += OnQueuePropertyChanged;
+
     _playback.PositionChanged += OnPlaybackPositionChanged;
     _runController.BusyChanged += OnRunControllerBusyChanged;
 
@@ -68,7 +71,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     AppendLog("Готово к работе. Перетащите файлы в окно или нажмите «Добавить файлы».");
   }
 
-  public ObservableCollection<QueueItemViewModel> Items => _queue.Items;
+  public QueueViewModel Queue { get; }
 
   public ObservableCollection<string> LogEntries => _log.Entries;
 
@@ -152,17 +155,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private string _ffmpegDownloadText = string.Empty;
 
   [ObservableProperty]
-  [NotifyCanExecuteChangedFor(nameof(PlayCommand))]
-  [NotifyCanExecuteChangedFor(nameof(PauseCommand))]
-  [NotifyCanExecuteChangedFor(nameof(StopCommand))]
-  [NotifyCanExecuteChangedFor(nameof(PlaySelectionCommand))]
-  [NotifyCanExecuteChangedFor(nameof(PreviewResultCommand))]
-  [NotifyCanExecuteChangedFor(nameof(SetTrimStartCommand))]
-  [NotifyCanExecuteChangedFor(nameof(SetTrimEndCommand))]
-  [NotifyCanExecuteChangedFor(nameof(ResetTrimCommand))]
-  private QueueItemViewModel? _selectedItem;
-
-  [ObservableProperty]
   private double _overallProgress;
 
   [ObservableProperty]
@@ -171,11 +163,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
   [ObservableProperty]
   [NotifyCanExecuteChangedFor(nameof(StartCommand))]
   [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
-  [NotifyCanExecuteChangedFor(nameof(AddFilesCommand))]
-  [NotifyCanExecuteChangedFor(nameof(AddFolderCommand))]
-  [NotifyCanExecuteChangedFor(nameof(RemoveSelectedCommand))]
-  [NotifyCanExecuteChangedFor(nameof(ClearCommand))]
-  [NotifyPropertyChangedFor(nameof(CanEditQueue))]
   private bool _isBusy;
 
   [ObservableProperty]
@@ -214,38 +201,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
   }
 
-  public bool HasSelection => SelectedItem is not null;
+  public bool HasSelection => Queue.SelectedItem is not null;
 
-  public bool CanStart => !IsBusy && Items.Count > 0;
-
-  public bool CanEditQueue => !IsBusy;
+  public bool CanStart => !IsBusy && Queue.Items.Count > 0;
 
   public void Dispose()
   {
+    Queue.ItemsChanged -= OnQueueItemsChanged;
+    Queue.ItemsAdded -= OnQueueItemsAdded;
+    Queue.ItemUpdated -= OnQueueItemUpdated;
+    Queue.StatusChanged -= OnQueueStatusChanged;
+    Queue.PropertyChanged -= OnQueuePropertyChanged;
     _playback.PositionChanged -= OnPlaybackPositionChanged;
     _runController.BusyChanged -= OnRunControllerBusyChanged;
     _runController.Dispose();
     GC.SuppressFinalize(this);
-  }
-
-  public void AddPaths(IEnumerable<string> paths)
-  {
-    if (IsBusy)
-    {
-      StatusText = "Дождитесь окончания конвертации";
-      return;
-    }
-
-    var added = _queue.Add(paths, BuildOptions());
-
-    StatusText = added > 0
-      ? $"Добавлено файлов: {added}"
-      : "Новые файлы не найдены";
-
-    if (added > 0 && !_conversionService.TryResolveFfmpeg(out _, out _))
-    {
-      AppendLog("FFmpeg ещё не установлен — анализ и волновая форма появятся после первой конвертации.");
-    }
   }
 
   public void SaveSettingsWithWindow(double width, double height)
@@ -253,50 +223,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     SaveSettingsCore(width, height);
   }
 
-  [RelayCommand(CanExecute = nameof(CanEditQueue))]
-  private void AddFiles()
-  {
-    var files = _filePicker.PickFiles();
-    if (files.Count > 0)
-    {
-      AddPaths(files);
-    }
-  }
-
-  [RelayCommand(CanExecute = nameof(CanEditQueue))]
-  private void AddFolder()
-  {
-    var folder = _filePicker.PickFolder("Выберите папку со звуками");
-    if (folder is not null)
-    {
-      AddPaths(new[] { folder });
-    }
-  }
-
-  [RelayCommand(CanExecute = nameof(CanEditQueue))]
-  private void RemoveSelected()
-  {
-    if (SelectedItem is null)
-    {
-      return;
-    }
-
-    _queue.Remove(SelectedItem);
-    SelectedItem = null;
-  }
-
-  [RelayCommand(CanExecute = nameof(CanEditQueue))]
-  private void Clear()
-  {
-    _queue.Clear();
-    SelectedItem = null;
-    StatusText = "Очередь очищена";
-  }
-
   [RelayCommand(CanExecute = nameof(CanStart))]
   private async Task StartAsync()
   {
-    if (Items.Count == 0)
+    if (Queue.Items.Count == 0)
     {
       return;
     }
@@ -322,12 +252,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     var options = BuildOptions();
 
-    if (SelectedItem is not null)
-    {
-      _ = _waveforms.EnsureLoadedAsync(SelectedItem, options);
-    }
-
-    StatusText = $"Конвертация: {Items.Count} файл(ов)…";
+    StatusText = $"Конвертация: {Queue.Items.Count} файл(ов)…";
 
     try
     {
@@ -379,7 +304,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private async Task PlayAsync()
   {
-    if (SelectedItem is not { } item)
+    if (Queue.SelectedItem is not { } item)
     {
       return;
     }
@@ -405,7 +330,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private async Task PlaySelectionAsync()
   {
-    if (SelectedItem is not { } item)
+    if (Queue.SelectedItem is not { } item)
     {
       return;
     }
@@ -418,7 +343,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private async Task PreviewResultAsync()
   {
-    if (SelectedItem is not { } item)
+    if (Queue.SelectedItem is not { } item)
     {
       return;
     }
@@ -438,7 +363,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private void SetTrimStart()
   {
-    if (SelectedItem is { } item)
+    if (Queue.SelectedItem is { } item)
     {
       StatusText = _playback.SetTrimStart(item);
     }
@@ -447,7 +372,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private void SetTrimEnd()
   {
-    if (SelectedItem is { } item)
+    if (Queue.SelectedItem is { } item)
     {
       StatusText = _playback.SetTrimEnd(item);
     }
@@ -456,7 +381,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
   [RelayCommand(CanExecute = nameof(HasSelection))]
   private void ResetTrim()
   {
-    if (SelectedItem is { } item)
+    if (Queue.SelectedItem is { } item)
     {
       StatusText = _playback.ResetTrim(item);
     }
@@ -599,7 +524,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   private void RecomputeTargetSizes()
   {
-    _queue.RecalculateTargetSizes(BuildOptions());
+    Queue.RecalculateTargetSizes(BuildOptions());
   }
 
   private void ApplySettings(AppSettings settings)
@@ -691,18 +616,59 @@ public partial class MainViewModel : ObservableObject, IDisposable
     _log.Add(message);
   }
 
-  partial void OnSelectedItemChanged(QueueItemViewModel? value)
+  private void OnQueuePropertyChanged(object? sender, PropertyChangedEventArgs e)
+  {
+    if (e.PropertyName == nameof(QueueViewModel.SelectedItem))
+    {
+      OnQueueSelectionChanged();
+    }
+  }
+
+  private void OnQueueSelectionChanged()
   {
     OnPropertyChanged(nameof(HasSelection));
+    PlayCommand.NotifyCanExecuteChanged();
+    PauseCommand.NotifyCanExecuteChanged();
+    StopCommand.NotifyCanExecuteChanged();
+    PlaySelectionCommand.NotifyCanExecuteChanged();
+    PreviewResultCommand.NotifyCanExecuteChanged();
+    SetTrimStartCommand.NotifyCanExecuteChanged();
+    SetTrimEndCommand.NotifyCanExecuteChanged();
+    ResetTrimCommand.NotifyCanExecuteChanged();
+
     _playback.Stop();
     PlaybackPositionSeconds = 0;
     PlaybackPositionText = "00:00.000 / 00:00.000";
-    EditorTitle = value is null ? "Выберите файл в очереди" : value.FileName;
+    EditorTitle = Queue.SelectedItem is null ? "Выберите файл в очереди" : Queue.SelectedItem.FileName;
+  }
 
-    if (value is not null)
+  private void OnQueueItemsChanged(object? sender, EventArgs e)
+  {
+    StartCommand.NotifyCanExecuteChanged();
+    RecomputeTargetSizes();
+  }
+
+  private void OnQueueItemsAdded(object? sender, int count)
+  {
+    if (!_conversionService.TryResolveFfmpeg(out _, out _))
     {
-      _ = _waveforms.EnsureLoadedAsync(value, BuildOptions());
+      AppendLog("FFmpeg ещё не установлен — анализ и волновая форма появятся после первой конвертации.");
     }
+  }
+
+  private void OnQueueItemUpdated(object? sender, QueueItemViewModel item)
+  {
+    item.UpdateTargetSize(BuildOptions());
+  }
+
+  private void OnQueueStatusChanged(object? sender, string message)
+  {
+    StatusText = message;
+  }
+
+  partial void OnIsBusyChanged(bool value)
+  {
+    Queue.IsLocked = value;
   }
 
   partial void OnSelectedPresetChanged(Cs16Preset? value)

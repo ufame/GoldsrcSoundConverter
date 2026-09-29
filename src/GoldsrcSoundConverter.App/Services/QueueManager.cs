@@ -22,7 +22,9 @@ public sealed class QueueManager : IQueueManager
 
   public ObservableCollection<QueueItemViewModel> Items { get; } = new();
 
-  public int Add(IEnumerable<string> paths, ConversionOptions options)
+  public event EventHandler<QueueItemViewModel>? ItemProbed;
+
+  public int Add(IEnumerable<string> paths)
   {
     var added = 0;
     var candidates = InputFileDiscoverer.Discover(
@@ -38,8 +40,7 @@ public sealed class QueueManager : IQueueManager
 
       var item = new QueueItemViewModel(candidate.FilePath, candidate.SourceRoot);
       Items.Add(item);
-      item.UpdateTargetSize(options);
-      _ = ProbeItemAsync(item, options, _probeCts.Token);
+      _ = ProbeItemAsync(item, _probeCts.Token);
       added++;
     }
 
@@ -92,7 +93,6 @@ public sealed class QueueManager : IQueueManager
 
   private async Task ProbeItemAsync(
     QueueItemViewModel item,
-    ConversionOptions options,
     CancellationToken cancellationToken)
   {
     if (item.Info is not null)
@@ -112,7 +112,7 @@ public sealed class QueueManager : IQueueManager
       }
 
       item.Info = result.Info;
-      item.UpdateTargetSize(options);
+      ItemProbed?.Invoke(this, item);
     }
     catch (OperationCanceledException)
     {

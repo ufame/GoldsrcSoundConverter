@@ -8,7 +8,9 @@ public interface IQueueManager : IDisposable
 {
   ObservableCollection<QueueItemViewModel> Items { get; }
 
-  int Add(IEnumerable<string> paths, ConversionOptions options);
+  event EventHandler<QueueItemViewModel>? ItemProbed;
+
+  int Add(IEnumerable<string> paths);
 
   void Remove(QueueItemViewModel item);
 

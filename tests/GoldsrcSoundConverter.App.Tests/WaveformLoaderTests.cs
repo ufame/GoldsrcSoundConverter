@@ -1,7 +1,6 @@
 using GoldsrcSoundConverter.App.Services;
 using GoldsrcSoundConverter.App.ViewModels;
 using GoldsrcSoundConverter.Core.Audio;
-using GoldsrcSoundConverter.Core.Models;
 using GoldsrcSoundConverter.Tests.Fakes;
 
 namespace GoldsrcSoundConverter.Tests;
@@ -24,11 +23,6 @@ public sealed class WaveformLoaderTests
     return new QueueItemViewModel(@"C:\in\clip.ogg", null);
   }
 
-  private static ConversionOptions Options()
-  {
-    return new ConversionOptions { OutputDirectory = @"C:\out" };
-  }
-
   [Fact]
   public async Task LoadsWaveformOnce()
   {
@@ -36,8 +30,8 @@ public sealed class WaveformLoaderTests
     var loader = CreateLoader();
     var item = Item();
 
-    await loader.EnsureLoadedAsync(item, Options());
-    await loader.EnsureLoadedAsync(item, Options());
+    await loader.EnsureLoadedAsync(item);
+    await loader.EnsureLoadedAsync(item);
 
     Assert.NotNull(item.Waveform);
     Assert.Equal(1, _conversion.WaveformRequests);
@@ -51,7 +45,7 @@ public sealed class WaveformLoaderTests
     var loader = CreateLoader();
     var item = Item();
 
-    await loader.EnsureLoadedAsync(item, Options());
+    await loader.EnsureLoadedAsync(item);
 
     Assert.Null(item.Waveform);
     Assert.False(item.IsWaveformLoading);
@@ -65,7 +59,7 @@ public sealed class WaveformLoaderTests
     var loader = CreateLoader();
     var item = Item();
 
-    await loader.EnsureLoadedAsync(item, Options());
+    await loader.EnsureLoadedAsync(item);
 
     Assert.False(item.IsWaveformLoading);
     Assert.Contains(_log.Entries, entry => entry.Contains("decode failed", StringComparison.Ordinal));

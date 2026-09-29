@@ -38,10 +38,10 @@
         </Grid.RowDefinitions>
 
         <WrapPanel Grid.Row="0" Margin="0,0,0,10">
-            <Button Content="Добавить файлы" Command="{Binding AddFilesCommand}" />
-            <Button Content="Добавить папку" Margin="6,0,0,0" Command="{Binding AddFolderCommand}" />
-            <Button Content="Удалить" Margin="6,0,0,0" Command="{Binding RemoveSelectedCommand}" />
-            <Button Content="Очистить" Margin="6,0,0,0" Command="{Binding ClearCommand}" />
+            <Button Content="Добавить файлы" Command="{Binding Queue.AddFilesCommand}" />
+            <Button Content="Добавить папку" Margin="6,0,0,0" Command="{Binding Queue.AddFolderCommand}" />
+            <Button Content="Удалить" Margin="6,0,0,0" Command="{Binding Queue.RemoveSelectedCommand}" />
+            <Button Content="Очистить" Margin="6,0,0,0" Command="{Binding Queue.ClearCommand}" />
             <Button Content="▶ Начать конвертацию"
                     Margin="18,0,0,0"
                     Style="{StaticResource AccentButton}"
@@ -155,8 +155,8 @@
 
             <DataGrid Grid.Column="2"
                       x:Name="QueueGrid"
-                      ItemsSource="{Binding Items}"
-                      SelectedItem="{Binding SelectedItem}">
+                      ItemsSource="{Binding Queue.Items}"
+                      SelectedItem="{Binding Queue.SelectedItem}">
                 <DataGrid.Columns>
                     <DataGridTemplateColumn Header="Файл" Width="2.2*">
                         <DataGridTemplateColumn.CellTemplate>
@@ -215,21 +215,21 @@
 
                     <controls:WaveformControl Grid.Row="1"
                                               Margin="0,8,0,8"
-                                              DurationSeconds="{Binding SelectedItem.DurationSeconds}"
+                                              DurationSeconds="{Binding Queue.SelectedItem.DurationSeconds}"
                                               PositionSeconds="{Binding PlaybackPositionSeconds}"
-                                              SelectionEndSeconds="{Binding SelectedItem.TrimEndSeconds, Mode=TwoWay}"
-                                              SelectionStartSeconds="{Binding SelectedItem.TrimStartSeconds, Mode=TwoWay}"
-                                              Waveform="{Binding SelectedItem.Waveform}" />
+                                              SelectionEndSeconds="{Binding Queue.SelectedItem.TrimEndSeconds, Mode=TwoWay}"
+                                              SelectionStartSeconds="{Binding Queue.SelectedItem.TrimStartSeconds, Mode=TwoWay}"
+                                              Waveform="{Binding Queue.SelectedItem.Waveform}" />
 
                     <StackPanel Grid.Row="2" Orientation="Horizontal">
-                        <Button Content="▶ Играть" IsEnabled="{Binding HasSelection}" Command="{Binding PlayCommand}" />
-                        <Button Content="⏸ Пауза" Margin="6,0,0,0" IsEnabled="{Binding HasSelection}" Command="{Binding PauseCommand}" />
-                        <Button Content="■ Стоп" Margin="6,0,0,0" IsEnabled="{Binding HasSelection}" Command="{Binding StopCommand}" />
-                        <Button Content="▶ Играть выделенное" Margin="14,0,0,0" IsEnabled="{Binding HasSelection}" Command="{Binding PlaySelectionCommand}" />
-                        <Button Content="▶ Результат" Margin="6,0,0,0" IsEnabled="{Binding HasSelection}" Command="{Binding PreviewResultCommand}" />
-                        <Button Content="Начало ← позиция" Margin="14,0,0,0" IsEnabled="{Binding HasSelection}" Command="{Binding SetTrimStartCommand}" />
-                        <Button Content="Конец ← позиция" Margin="6,0,0,0" IsEnabled="{Binding HasSelection}" Command="{Binding SetTrimEndCommand}" />
-                        <Button Content="Сбросить обрезку" Margin="6,0,0,0" IsEnabled="{Binding HasSelection}" Command="{Binding ResetTrimCommand}" />
+                        <Button Content="▶ Играть" IsEnabled="{Binding Queue.HasSelection}" Command="{Binding PlayCommand}" />
+                        <Button Content="⏸ Пауза" Margin="6,0,0,0" IsEnabled="{Binding Queue.HasSelection}" Command="{Binding PauseCommand}" />
+                        <Button Content="■ Стоп" Margin="6,0,0,0" IsEnabled="{Binding Queue.HasSelection}" Command="{Binding StopCommand}" />
+                        <Button Content="▶ Играть выделенное" Margin="14,0,0,0" IsEnabled="{Binding Queue.HasSelection}" Command="{Binding PlaySelectionCommand}" />
+                        <Button Content="▶ Результат" Margin="6,0,0,0" IsEnabled="{Binding Queue.HasSelection}" Command="{Binding PreviewResultCommand}" />
+                        <Button Content="Начало ← позиция" Margin="14,0,0,0" IsEnabled="{Binding Queue.HasSelection}" Command="{Binding SetTrimStartCommand}" />
+                        <Button Content="Конец ← позиция" Margin="6,0,0,0" IsEnabled="{Binding Queue.HasSelection}" Command="{Binding SetTrimEndCommand}" />
+                        <Button Content="Сбросить обрезку" Margin="6,0,0,0" IsEnabled="{Binding Queue.HasSelection}" Command="{Binding ResetTrimCommand}" />
                         <Slider Width="120"
                                 Margin="16,0,0,0"
                                 VerticalAlignment="Center"

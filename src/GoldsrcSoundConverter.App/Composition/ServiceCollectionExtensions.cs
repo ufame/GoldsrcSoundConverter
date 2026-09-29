@@ -32,6 +32,7 @@ public static class ServiceCollectionExtensions
     services.AddScoped<IQueueManager, QueueManager>();
     services.AddScoped<IConversionRunController, ConversionRunController>();
     services.AddScoped<IQueueConversionPresenter, QueueConversionPresenter>();
+    services.AddScoped<QueueViewModel>();
     services.AddScoped<MainViewModel>();
     services.AddScoped<MainWindow>();
 

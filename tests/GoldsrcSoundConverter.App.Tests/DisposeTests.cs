@@ -75,18 +75,18 @@ public sealed class DisposeTests : IDisposable
   {
     _settings.Settings.OutputDirectory = _temp.Path;
     var queue = new QueueManager(_conversion, _log);
+    var queueVm = new QueueViewModel(queue, _filePicker, new WaveformLoader(_conversion, _log));
     return new MainViewModel(
       _settings,
       _filePicker,
       _folderLauncher,
       _conversion,
       new PlaybackCoordinator(_playback, _log),
-      queue,
+      queueVm,
       new ConversionRequestFactory(),
       new PresetCatalog(),
       new ConversionRunController(_conversion, _log),
       new QueueConversionPresenter(queue),
-      new WaveformLoader(_conversion, _log),
       _log);
   }
 }

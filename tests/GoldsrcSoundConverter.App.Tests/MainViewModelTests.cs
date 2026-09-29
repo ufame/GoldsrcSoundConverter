@@ -1,6 +1,5 @@
-using GoldsrcSoundConverter.App.Services;
+﻿using GoldsrcSoundConverter.App.Services;
 using GoldsrcSoundConverter.App.ViewModels;
-using GoldsrcSoundConverter.Core.Audio;
 using GoldsrcSoundConverter.Core.Models;
 using GoldsrcSoundConverter.Tests.Fakes;
 using Xunit;
@@ -9,9 +8,6 @@ namespace GoldsrcSoundConverter.Tests;
 
 public sealed class MainViewModelTests : IDisposable
 {
-  private static readonly float[] WaveformMins = { -0.5f };
-  private static readonly float[] WaveformMaxs = { 0.5f };
-
   private readonly TempDirectory _temp = new();
   private readonly FakeSettingsStore _settings = new();
   private readonly FakeFilePicker _filePicker = new();
@@ -26,57 +22,11 @@ public sealed class MainViewModelTests : IDisposable
   }
 
   [Fact]
-  public void AddFilesAddsSupportedFiles()
-  {
-    var file = CreateFile("sound.wav");
-    _filePicker.FilesToPick = new[] { file };
-    var vm = CreateViewModel();
-
-    vm.AddFilesCommand.Execute(null);
-
-    var item = Assert.Single(vm.Items);
-    Assert.Equal(file, item.SourcePath);
-    Assert.True(vm.CanStart);
-  }
-
-  [Fact]
-  public void AddPathsIgnoresDuplicatesAndUnsupportedFiles()
-  {
-    var wave = CreateFile("sound.wav");
-    var text = CreateFile("notes.txt");
-    var vm = CreateViewModel();
-
-    vm.AddPaths(new[] { wave, wave, text });
-
-    Assert.Single(vm.Items);
-    Assert.Equal(wave, vm.Items[0].SourcePath);
-  }
-
-  [Fact]
-  public void RemoveSelectedKeepsRemainingItemInstance()
-  {
-    var first = CreateFile("a.wav");
-    var second = CreateFile("b.wav");
-    var vm = CreateViewModel();
-    vm.AddPaths(new[] { first, second });
-    var secondItem = vm.Items[1];
-    var secondId = secondItem.Id;
-
-    vm.SelectedItem = vm.Items[0];
-    vm.RemoveSelectedCommand.Execute(null);
-
-    var remaining = Assert.Single(vm.Items);
-    Assert.Same(secondItem, remaining);
-    Assert.Equal(second, remaining.SourcePath);
-    Assert.Equal(secondId, remaining.Id);
-  }
-
-  [Fact]
   public void StartPassesSnapshotAndOptionsToConversionService()
   {
     var vm = CreateViewModel();
-    vm.AddPaths(new[] { CreateFile("a.wav"), CreateFile("b.ogg") });
-    var ids = vm.Items.Select(i => i.Id).ToArray();
+    vm.Queue.AddPaths(new[] { CreateFile("a.wav"), CreateFile("b.ogg") });
+    var ids = vm.Queue.Items.Select(i => i.Id).ToArray();
     vm.Parallelism = 2;
     vm.Mp3BitrateKbps = 192;
 
@@ -95,7 +45,7 @@ public sealed class MainViewModelTests : IDisposable
   public void StartAppliesOutcomesToQueueItems()
   {
     var vm = CreateViewModel();
-    vm.AddPaths(new[] { CreateFile("ok.wav"), CreateFile("bad.wav"), CreateFile("skip.wav") });
+    vm.Queue.AddPaths(new[] { CreateFile("ok.wav"), CreateFile("bad.wav"), CreateFile("skip.wav") });
     _conversion.OutcomeFactory = item => item.SourcePath.EndsWith("bad.wav", StringComparison.Ordinal)
       ? new ConversionOutcome(item.Id, false, false, null, "boom", null)
       : item.SourcePath.EndsWith("skip.wav", StringComparison.Ordinal)
@@ -104,9 +54,9 @@ public sealed class MainViewModelTests : IDisposable
 
     vm.StartCommand.Execute(null);
 
-    Assert.Equal(ConversionStage.Completed, vm.Items.Single(i => i.SourcePath.EndsWith("ok.wav", StringComparison.Ordinal)).Stage);
-    Assert.Equal(ConversionStage.Failed, vm.Items.Single(i => i.SourcePath.EndsWith("bad.wav", StringComparison.Ordinal)).Stage);
-    Assert.Equal(ConversionStage.Skipped, vm.Items.Single(i => i.SourcePath.EndsWith("skip.wav", StringComparison.Ordinal)).Stage);
+    Assert.Equal(ConversionStage.Completed, vm.Queue.Items.Single(i => i.SourcePath.EndsWith("ok.wav", StringComparison.Ordinal)).Stage);
+    Assert.Equal(ConversionStage.Failed, vm.Queue.Items.Single(i => i.SourcePath.EndsWith("bad.wav", StringComparison.Ordinal)).Stage);
+    Assert.Equal(ConversionStage.Skipped, vm.Queue.Items.Single(i => i.SourcePath.EndsWith("skip.wav", StringComparison.Ordinal)).Stage);
     Assert.Contains("успешно 1", vm.StatusText);
     Assert.Contains("ошибок 1", vm.StatusText);
     Assert.Contains("пропущено 1", vm.StatusText);
@@ -116,36 +66,36 @@ public sealed class MainViewModelTests : IDisposable
   public async Task QueueEditingIsLockedWhileBusy()
   {
     var vm = CreateViewModel();
-    vm.AddPaths(new[] { CreateFile("a.wav") });
+    vm.Queue.AddPaths(new[] { CreateFile("a.wav") });
     _conversion.ConversionGate = new TaskCompletionSource();
 
     var startTask = vm.StartCommand.ExecuteAsync(null);
     await WaitUntil(() => vm.IsBusy);
 
-    Assert.False(vm.AddFilesCommand.CanExecute(null));
-    Assert.False(vm.AddFolderCommand.CanExecute(null));
-    Assert.False(vm.RemoveSelectedCommand.CanExecute(null));
-    Assert.False(vm.ClearCommand.CanExecute(null));
-    Assert.False(vm.CanEditQueue);
+    Assert.False(vm.Queue.AddFilesCommand.CanExecute(null));
+    Assert.False(vm.Queue.AddFolderCommand.CanExecute(null));
+    Assert.False(vm.Queue.RemoveSelectedCommand.CanExecute(null));
+    Assert.False(vm.Queue.ClearCommand.CanExecute(null));
+    Assert.False(vm.Queue.CanEditQueue);
 
     _conversion.ConversionGate.SetResult();
     await startTask;
 
-    Assert.True(vm.CanEditQueue);
+    Assert.True(vm.Queue.CanEditQueue);
   }
 
   [Fact]
   public async Task AddPathsDuringConversionIsRejected()
   {
     var vm = CreateViewModel();
-    vm.AddPaths(new[] { CreateFile("a.wav") });
+    vm.Queue.AddPaths(new[] { CreateFile("a.wav") });
     _conversion.ConversionGate = new TaskCompletionSource();
 
     var startTask = vm.StartCommand.ExecuteAsync(null);
     await WaitUntil(() => vm.IsBusy);
-    vm.AddPaths(new[] { CreateFile("b.wav") });
+    vm.Queue.AddPaths(new[] { CreateFile("b.wav") });
 
-    Assert.Single(vm.Items);
+    Assert.Single(vm.Queue.Items);
     Assert.Contains("Дождитесь", vm.StatusText);
 
     _conversion.ConversionGate.SetResult();
@@ -156,7 +106,7 @@ public sealed class MainViewModelTests : IDisposable
   public async Task CancelRequestsCancellation()
   {
     var vm = CreateViewModel();
-    vm.AddPaths(new[] { CreateFile("a.wav") });
+    vm.Queue.AddPaths(new[] { CreateFile("a.wav") });
     _conversion.ConversionGate = new TaskCompletionSource();
 
     var startTask = vm.StartCommand.ExecuteAsync(null);
@@ -172,8 +122,8 @@ public sealed class MainViewModelTests : IDisposable
   {
     var file = CreateFile("sound.wav");
     var vm = CreateViewModel();
-    vm.AddPaths(new[] { file });
-    vm.SelectedItem = vm.Items[0];
+    vm.Queue.AddPaths(new[] { file });
+    vm.Queue.SelectedItem = vm.Queue.Items[0];
 
     await vm.PlayCommand.ExecuteAsync(null);
 
@@ -185,11 +135,11 @@ public sealed class MainViewModelTests : IDisposable
   public async Task PlaySelectionUsesTrimRange()
   {
     var vm = CreateViewModel();
-    vm.AddPaths(new[] { CreateFile("sound.wav") });
-    var item = vm.Items[0];
+    vm.Queue.AddPaths(new[] { CreateFile("sound.wav") });
+    var item = vm.Queue.Items[0];
     item.TrimStartSeconds = 1.5;
     item.TrimEndSeconds = 4.0;
-    vm.SelectedItem = item;
+    vm.Queue.SelectedItem = item;
 
     await vm.PlaySelectionCommand.ExecuteAsync(null);
 
@@ -202,8 +152,8 @@ public sealed class MainViewModelTests : IDisposable
   public void PauseAndStopDelegateToPlayback()
   {
     var vm = CreateViewModel();
-    vm.AddPaths(new[] { CreateFile("sound.wav") });
-    vm.SelectedItem = vm.Items[0];
+    vm.Queue.AddPaths(new[] { CreateFile("sound.wav") });
+    vm.Queue.SelectedItem = vm.Queue.Items[0];
     var stopsAfterSelection = _playback.StopCount;
 
     vm.PauseCommand.Execute(null);
@@ -218,8 +168,8 @@ public sealed class MainViewModelTests : IDisposable
   public async Task PreviewResultDelegatesToPlaybackController()
   {
     var vm = CreateViewModel();
-    vm.AddPaths(new[] { CreateFile("sound.wav") });
-    vm.SelectedItem = vm.Items[0];
+    vm.Queue.AddPaths(new[] { CreateFile("sound.wav") });
+    vm.Queue.SelectedItem = vm.Queue.Items[0];
 
     await vm.PreviewResultCommand.ExecuteAsync(null);
 
@@ -233,8 +183,8 @@ public sealed class MainViewModelTests : IDisposable
   {
     _playback.PrepareException = new InvalidOperationException("нет декодера");
     var vm = CreateViewModel();
-    vm.AddPaths(new[] { CreateFile("sound.wav") });
-    vm.SelectedItem = vm.Items[0];
+    vm.Queue.AddPaths(new[] { CreateFile("sound.wav") });
+    vm.Queue.SelectedItem = vm.Queue.Items[0];
 
     vm.PlayCommand.Execute(null);
 
@@ -295,16 +245,20 @@ public sealed class MainViewModelTests : IDisposable
   }
 
   [Fact]
-  public async Task SelectingItemLoadsWaveformFromService()
+  public void SelectionChangeResetsPlaybackState()
   {
-    _conversion.Waveform = new WaveformData(WaveformMins, WaveformMaxs, 64, 8000);
     var vm = CreateViewModel();
-    vm.AddPaths(new[] { CreateFile("sound.wav") });
+    vm.Queue.AddPaths(new[] { CreateFile("a.wav"), CreateFile("b.wav") });
+    vm.Queue.SelectedItem = vm.Queue.Items[0];
+    vm.PlaybackPositionSeconds = 12.5;
+    var stopsBefore = _playback.StopCount;
 
-    vm.SelectedItem = vm.Items[0];
+    vm.Queue.SelectedItem = vm.Queue.Items[1];
 
-    await WaitUntil(() => vm.Items[0].Waveform is not null);
-    Assert.NotNull(vm.Items[0].Waveform);
+    Assert.Equal(stopsBefore + 1, _playback.StopCount);
+    Assert.Equal(0, vm.PlaybackPositionSeconds, 3);
+    Assert.Equal("00:00.000 / 00:00.000", vm.PlaybackPositionText);
+    Assert.True(vm.HasSelection);
   }
 
   [Fact]
@@ -339,18 +293,18 @@ public sealed class MainViewModelTests : IDisposable
   {
     _settings.Settings.OutputDirectory = _temp.Path;
     var queue = new QueueManager(_conversion, _log);
+    var queueVm = new QueueViewModel(queue, _filePicker, new WaveformLoader(_conversion, _log));
     return new MainViewModel(
       _settings,
       _filePicker,
       _folderLauncher,
       _conversion,
       new PlaybackCoordinator(_playback, _log),
-      queue,
+      queueVm,
       new ConversionRequestFactory(),
       new PresetCatalog(),
       runController ?? new ConversionRunController(_conversion, _log),
       new QueueConversionPresenter(queue),
-      new WaveformLoader(_conversion, _log),
       _log);
   }
 
