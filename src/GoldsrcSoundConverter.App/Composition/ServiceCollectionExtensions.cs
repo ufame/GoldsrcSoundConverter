@@ -33,6 +33,16 @@ public static class ServiceCollectionExtensions
     services.AddScoped<IConversionRunController, ConversionRunController>();
     services.AddScoped<IQueueConversionPresenter, QueueConversionPresenter>();
     services.AddScoped<QueueViewModel>();
+    services.AddScoped<OutputDirectoryProvider>();
+    services.AddScoped<ConversionViewModel>(sp => new ConversionViewModel(
+      sp.GetRequiredService<QueueViewModel>(),
+      sp.GetRequiredService<IFilePicker>(),
+      sp.GetRequiredService<IConversionService>(),
+      sp.GetRequiredService<IConversionRequestFactory>(),
+      sp.GetRequiredService<IConversionRunController>(),
+      sp.GetRequiredService<IQueueConversionPresenter>(),
+      sp.GetRequiredService<ILogBuffer>(),
+      sp.GetRequiredService<OutputDirectoryProvider>()));
     services.AddScoped<MainViewModel>();
     services.AddScoped<MainWindow>();
 

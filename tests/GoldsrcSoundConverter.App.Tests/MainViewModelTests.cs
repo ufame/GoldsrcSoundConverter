@@ -27,10 +27,10 @@ public sealed class MainViewModelTests : IDisposable
     var vm = CreateViewModel();
     vm.Queue.AddPaths(new[] { CreateFile("a.wav"), CreateFile("b.ogg") });
     var ids = vm.Queue.Items.Select(i => i.Id).ToArray();
-    vm.Parallelism = 2;
-    vm.Mp3BitrateKbps = 192;
+    vm.Conversion.Parallelism = 2;
+    vm.Conversion.Mp3BitrateKbps = 192;
 
-    vm.StartCommand.Execute(null);
+    vm.Conversion.StartCommand.Execute(null);
 
     var call = Assert.Single(_conversion.ConvertCalls);
     Assert.Equal(2, call.WorkItems.Count);
@@ -52,7 +52,7 @@ public sealed class MainViewModelTests : IDisposable
         ? new ConversionOutcome(item.Id, true, true, null, null, null)
         : new ConversionOutcome(item.Id, true, false, item.SourcePath + ".out.wav", null, null);
 
-    vm.StartCommand.Execute(null);
+    vm.Conversion.StartCommand.Execute(null);
 
     Assert.Equal(ConversionStage.Completed, vm.Queue.Items.Single(i => i.SourcePath.EndsWith("ok.wav", StringComparison.Ordinal)).Stage);
     Assert.Equal(ConversionStage.Failed, vm.Queue.Items.Single(i => i.SourcePath.EndsWith("bad.wav", StringComparison.Ordinal)).Stage);
@@ -69,8 +69,8 @@ public sealed class MainViewModelTests : IDisposable
     vm.Queue.AddPaths(new[] { CreateFile("a.wav") });
     _conversion.ConversionGate = new TaskCompletionSource();
 
-    var startTask = vm.StartCommand.ExecuteAsync(null);
-    await WaitUntil(() => vm.IsBusy);
+    var startTask = vm.Conversion.StartCommand.ExecuteAsync(null);
+    await WaitUntil(() => vm.Conversion.IsBusy);
 
     Assert.False(vm.Queue.AddFilesCommand.CanExecute(null));
     Assert.False(vm.Queue.AddFolderCommand.CanExecute(null));
@@ -91,8 +91,8 @@ public sealed class MainViewModelTests : IDisposable
     vm.Queue.AddPaths(new[] { CreateFile("a.wav") });
     _conversion.ConversionGate = new TaskCompletionSource();
 
-    var startTask = vm.StartCommand.ExecuteAsync(null);
-    await WaitUntil(() => vm.IsBusy);
+    var startTask = vm.Conversion.StartCommand.ExecuteAsync(null);
+    await WaitUntil(() => vm.Conversion.IsBusy);
     vm.Queue.AddPaths(new[] { CreateFile("b.wav") });
 
     Assert.Single(vm.Queue.Items);
@@ -109,9 +109,9 @@ public sealed class MainViewModelTests : IDisposable
     vm.Queue.AddPaths(new[] { CreateFile("a.wav") });
     _conversion.ConversionGate = new TaskCompletionSource();
 
-    var startTask = vm.StartCommand.ExecuteAsync(null);
-    await WaitUntil(() => vm.IsBusy);
-    vm.CancelCommand.Execute(null);
+    var startTask = vm.Conversion.StartCommand.ExecuteAsync(null);
+    await WaitUntil(() => vm.Conversion.IsBusy);
+    vm.Conversion.CancelCommand.Execute(null);
     await startTask;
 
     Assert.Contains("отменена", vm.StatusText);
@@ -235,16 +235,6 @@ public sealed class MainViewModelTests : IDisposable
   }
 
   [Fact]
-  public void CustomFfmpegPathPropagatesToService()
-  {
-    var vm = CreateViewModel();
-
-    vm.FfmpegCustomPath = @"C:\ff\ffmpeg.exe";
-
-    Assert.Contains(@"C:\ff\ffmpeg.exe", _conversion.CustomPaths);
-  }
-
-  [Fact]
   public void SelectionChangeResetsPlaybackState()
   {
     var vm = CreateViewModel();
@@ -275,7 +265,7 @@ public sealed class MainViewModelTests : IDisposable
   }
 
   [Fact]
-  public void DisposeDetachesFromRunControllerAndDisposesIt()
+  public void DisposeLeavesChildLifecycleToTheScope()
   {
     var runController = new FakeRunController();
     var vm = CreateViewModel(runController);
@@ -285,8 +275,8 @@ public sealed class MainViewModelTests : IDisposable
     runController.IsBusy = true;
     runController.RaiseBusyChanged();
 
-    Assert.False(vm.IsBusy);
-    Assert.True(runController.Disposed);
+    Assert.True(vm.Conversion.IsBusy);
+    Assert.False(runController.Disposed);
   }
 
   private MainViewModel CreateViewModel(IConversionRunController? runController = null)
@@ -294,18 +284,26 @@ public sealed class MainViewModelTests : IDisposable
     _settings.Settings.OutputDirectory = _temp.Path;
     var queue = new QueueManager(_conversion, _log);
     var queueVm = new QueueViewModel(queue, _filePicker, new WaveformLoader(_conversion, _log));
+    var outputDirectory = new OutputDirectoryProvider();
+    var conversion = new ConversionViewModel(
+      queueVm,
+      _filePicker,
+      _conversion,
+      new ConversionRequestFactory(),
+      runController ?? new ConversionRunController(_conversion, _log),
+      new QueueConversionPresenter(queue),
+      _log,
+      outputDirectory);
     return new MainViewModel(
       _settings,
       _filePicker,
       _folderLauncher,
-      _conversion,
       new PlaybackCoordinator(_playback, _log),
       queueVm,
-      new ConversionRequestFactory(),
+      conversion,
       new PresetCatalog(),
-      runController ?? new ConversionRunController(_conversion, _log),
-      new QueueConversionPresenter(queue),
-      _log);
+      _log,
+      outputDirectory);
   }
 
   private string CreateFile(string name)

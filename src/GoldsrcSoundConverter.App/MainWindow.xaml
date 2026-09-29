@@ -45,12 +45,12 @@
             <Button Content="▶ Начать конвертацию"
                     Margin="18,0,0,0"
                     Style="{StaticResource AccentButton}"
-                    Command="{Binding StartCommand}" />
-            <Button Content="Отмена" Margin="6,0,0,0" Command="{Binding CancelCommand}" />
+                    Command="{Binding Conversion.StartCommand}" />
+            <Button Content="Отмена" Margin="6,0,0,0" Command="{Binding Conversion.CancelCommand}" />
             <TextBlock Margin="16,0,0,0"
                        Foreground="{StaticResource TextMutedBrush}"
                        TextTrimming="CharacterEllipsis"
-                       Text="{Binding FfmpegStatusText}" />
+                       Text="{Binding Conversion.FfmpegStatusText}" />
         </WrapPanel>
 
         <Grid Grid.Row="1">
@@ -70,8 +70,8 @@
                         <TextBlock Text="ВЫХОД" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,8" />
 
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <RadioButton Content="WAV" IsChecked="{Binding IsWavFormat}" />
-                            <RadioButton Content="MP3" Margin="16,0,0,0" IsChecked="{Binding IsMp3Format}" />
+                            <RadioButton Content="WAV" IsChecked="{Binding Conversion.IsWavFormat}" />
+                            <RadioButton Content="MP3" Margin="16,0,0,0" IsChecked="{Binding Conversion.IsMp3Format}" />
                         </StackPanel>
 
                         <TextBlock Text="Пресет" Foreground="{StaticResource TextMutedBrush}" Margin="0,4,0,4" />
@@ -80,31 +80,31 @@
                                   DisplayMemberPath="Name" />
 
                         <TextBlock Text="Частота дискретизации" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4" />
-                        <ComboBox ItemsSource="{Binding SampleRates}" SelectedItem="{Binding SampleRate}" />
+                        <ComboBox ItemsSource="{Binding Conversion.SampleRates}" SelectedItem="{Binding Conversion.SampleRate}" />
 
                         <TextBlock Text="Каналы" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4" />
-                        <ComboBox ItemsSource="{Binding ChannelOptions}"
-                                  SelectedValue="{Binding Channels}"
+                        <ComboBox ItemsSource="{Binding Conversion.ChannelOptions}"
+                                  SelectedValue="{Binding Conversion.Channels}"
                                   SelectedValuePath="Value"
                                   DisplayMemberPath="Display" />
 
                         <TextBlock Text="Разрядность (WAV)" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4" />
-                        <ComboBox ItemsSource="{Binding BitDepthOptions}"
-                                  SelectedValue="{Binding BitDepth}"
+                        <ComboBox ItemsSource="{Binding Conversion.BitDepthOptions}"
+                                  SelectedValue="{Binding Conversion.BitDepth}"
                                   SelectedValuePath="Value"
                                   DisplayMemberPath="Display"
-                                  IsEnabled="{Binding IsWavFormat}" />
+                                  IsEnabled="{Binding Conversion.IsWavFormat}" />
 
                         <TextBlock Text="Битрейт MP3 (CBR)" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4" />
-                        <ComboBox ItemsSource="{Binding Mp3Bitrates}"
-                                  SelectedItem="{Binding Mp3BitrateKbps}"
-                                  IsEnabled="{Binding IsMp3Format}" />
+                        <ComboBox ItemsSource="{Binding Conversion.Mp3Bitrates}"
+                                  SelectedItem="{Binding Conversion.Mp3BitrateKbps}"
+                                  IsEnabled="{Binding Conversion.IsMp3Format}" />
 
                         <TextBlock Text="ОБРАБОТКА" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,18,0,8" />
-                        <CheckBox Content="Нормализовать пик (−0.3 dBFS)" IsChecked="{Binding NormalizePeak}" />
-                        <CheckBox Content="ASCII-имена файлов" Margin="0,8,0,0" IsChecked="{Binding AsciiNames}" />
-                        <CheckBox Content="Нижний регистр имён" Margin="0,8,0,0" IsChecked="{Binding LowercaseNames}" />
-                        <CheckBox Content="Сохранять структуру папок" Margin="0,8,0,0" IsChecked="{Binding PreserveStructure}" />
+                        <CheckBox Content="Нормализовать пик (−0.3 dBFS)" IsChecked="{Binding Conversion.NormalizePeak}" />
+                        <CheckBox Content="ASCII-имена файлов" Margin="0,8,0,0" IsChecked="{Binding Conversion.AsciiNames}" />
+                        <CheckBox Content="Нижний регистр имён" Margin="0,8,0,0" IsChecked="{Binding Conversion.LowercaseNames}" />
+                        <CheckBox Content="Сохранять структуру папок" Margin="0,8,0,0" IsChecked="{Binding Conversion.PreserveStructure}" />
 
                         <TextBlock Text="ВЫВОД" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,18,0,8" />
                         <TextBlock Text="Папка результатов" Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4" />
@@ -120,13 +120,13 @@
                         </Grid>
 
                         <TextBlock Text="При совпадении имён" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4" />
-                        <ComboBox ItemsSource="{Binding CollisionOptions}"
-                                  SelectedValue="{Binding CollisionPolicy}"
+                        <ComboBox ItemsSource="{Binding Conversion.CollisionOptions}"
+                                  SelectedValue="{Binding Conversion.CollisionPolicy}"
                                   SelectedValuePath="Value"
                                   DisplayMemberPath="Display" />
 
                         <TextBlock Text="Параллельных задач" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4" />
-                        <ComboBox ItemsSource="{Binding ParallelismOptions}" SelectedItem="{Binding Parallelism}" />
+                        <ComboBox ItemsSource="{Binding Conversion.ParallelismOptions}" SelectedItem="{Binding Conversion.Parallelism}" />
 
                         <TextBlock Text="FFMPEG" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,18,0,8" />
                         <TextBlock Text="Свой ffmpeg.exe (необязательно)"
@@ -140,10 +140,10 @@
                             </Grid.ColumnDefinitions>
                             <TextBox Grid.Column="0"
                                      ContextMenu="{StaticResource TextEditContextMenu}"
-                                     Text="{Binding FfmpegCustomPath, UpdateSourceTrigger=PropertyChanged}" />
-                            <Button Grid.Column="1" Content="…" Margin="6,0,0,0" Command="{Binding BrowseFfmpegCommand}" />
+                                     Text="{Binding Conversion.FfmpegCustomPath, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button Grid.Column="1" Content="…" Margin="6,0,0,0" Command="{Binding Conversion.BrowseFfmpegCommand}" />
                         </Grid>
-                        <TextBlock Text="{Binding FfmpegDownloadText}"
+                        <TextBlock Text="{Binding Conversion.FfmpegDownloadText}"
                                    Foreground="{StaticResource TextMutedBrush}"
                                    TextWrapping="Wrap"
                                    Margin="0,6,0,0" />
@@ -259,7 +259,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <ProgressBar Grid.Column="0" Value="{Binding OverallProgress}" Maximum="1" VerticalAlignment="Center" />
+            <ProgressBar Grid.Column="0" Value="{Binding Conversion.OverallProgress}" Maximum="1" VerticalAlignment="Center" />
             <TextBlock Grid.Column="1"
                        Margin="12,0,0,0"
                        TextTrimming="CharacterEllipsis"
