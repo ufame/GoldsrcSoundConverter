@@ -45,6 +45,7 @@ public static class ServiceCollectionExtensions
       sp.GetRequiredService<OutputDirectoryProvider>()));
     services.AddScoped<PlaybackViewModel>();
     services.AddScoped<PresetViewModel>();
+    services.AddScoped<SettingsViewModel>();
     services.AddScoped<MainViewModel>();
     services.AddScoped<MainWindow>();
 

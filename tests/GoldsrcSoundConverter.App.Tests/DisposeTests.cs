@@ -88,15 +88,14 @@ public sealed class DisposeTests : IDisposable
       outputDirectory);
     var playback = new PlaybackViewModel(queueVm, conversion, new PlaybackCoordinator(_playback, _log));
     var presets = new PresetViewModel(conversion, new PresetCatalog());
-    return new MainViewModel(
+    var settings = new SettingsViewModel(
       _settings,
       _filePicker,
       _folderLauncher,
-      queueVm,
       conversion,
-      playback,
       presets,
       _log,
       outputDirectory);
+    return new MainViewModel(queueVm, conversion, playback, presets, settings, _log);
   }
 }

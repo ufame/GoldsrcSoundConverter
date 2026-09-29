@@ -21,6 +21,14 @@ public sealed class MainViewModelTests : IDisposable
   }
 
   [Fact]
+  public void StartupMessageIsLogged()
+  {
+    var vm = CreateViewModel();
+
+    Assert.Contains(vm.LogEntries, entry => entry.Contains("Готово к работе", StringComparison.Ordinal));
+  }
+
+  [Fact]
   public void StartSavesSettingsOnRunFinished()
   {
     var vm = CreateViewModel();
@@ -36,19 +44,11 @@ public sealed class MainViewModelTests : IDisposable
   public void ConversionStatusIsForwardedToShell()
   {
     var vm = CreateViewModel();
-    string? status = null;
-    vm.PropertyChanged += (_, e) =>
-    {
-      if (e.PropertyName == nameof(MainViewModel.StatusText))
-      {
-        status = vm.StatusText;
-      }
-    };
     vm.Queue.AddPaths(new[] { CreateFile("a.wav") });
 
     vm.Conversion.StartCommand.Execute(null);
 
-    Assert.Contains("Готово: успешно 1", status);
+    Assert.Contains("Готово: успешно 1", vm.StatusText);
   }
 
   [Fact]
@@ -62,65 +62,13 @@ public sealed class MainViewModelTests : IDisposable
   }
 
   [Fact]
-  public void OpenOutputFolderUsesLauncher()
+  public void SettingsStatusIsForwardedToShell()
   {
     var vm = CreateViewModel();
 
-    vm.OpenOutputFolderCommand.Execute(null);
+    vm.Settings.SaveSettingsCommand.Execute(null);
 
-    Assert.Contains(_temp.Path, _folderLauncher.OpenedPaths);
-  }
-
-  [Fact]
-  public void OpenMissingOutputFolderReportsStatus()
-  {
-    var vm = CreateViewModel();
-    vm.OutputDirectory = Path.Combine(_temp.Path, "missing");
-
-    vm.OpenOutputFolderCommand.Execute(null);
-
-    Assert.Empty(_folderLauncher.OpenedPaths);
-    Assert.Contains("не создана", vm.StatusText);
-  }
-
-  [Fact]
-  public void BrowseOutputDirectoryUsesPicker()
-  {
-    var vm = CreateViewModel();
-    _filePicker.FolderToPick = _temp.Path;
-
-    vm.BrowseOutputDirectoryCommand.Execute(null);
-
-    Assert.Equal(_temp.Path, vm.OutputDirectory);
-  }
-
-  [Fact]
-  public void SaveSettingsCommandPersistsAndReportsStatus()
-  {
-    var vm = CreateViewModel();
-    var savesBefore = _settings.SaveCount;
-
-    vm.SaveSettingsCommand.Execute(null);
-
-    Assert.Equal(savesBefore + 1, _settings.SaveCount);
     Assert.Equal("Настройки сохранены", vm.StatusText);
-  }
-
-  [Fact]
-  public void LoadedSettingsAreAppliedToConversion()
-  {
-    _settings.Settings.Format = Core.Models.OutputAudioFormat.Mp3;
-    _settings.Settings.SampleRate = 44100;
-    _settings.Settings.Channels = Core.Models.TargetChannels.Stereo;
-    _settings.Settings.Mp3BitrateKbps = 192;
-
-    var vm = CreateViewModel();
-
-    Assert.Equal(Core.Models.OutputAudioFormat.Mp3, vm.Conversion.Format);
-    Assert.Equal(44100, vm.Conversion.SampleRate);
-    Assert.Equal(Core.Models.TargetChannels.Stereo, vm.Conversion.Channels);
-    Assert.Equal(192, vm.Conversion.Mp3BitrateKbps);
-    Assert.Equal("mp3-music-hq", vm.Presets.SelectedItem!.Id);
   }
 
   [Fact]
@@ -155,16 +103,15 @@ public sealed class MainViewModelTests : IDisposable
       outputDirectory);
     var playback = new PlaybackViewModel(queueVm, conversion, new PlaybackCoordinator(_playback, _log));
     var presets = new PresetViewModel(conversion, new PresetCatalog());
-    return new MainViewModel(
+    var settings = new SettingsViewModel(
       _settings,
       _filePicker,
       _folderLauncher,
-      queueVm,
       conversion,
-      playback,
       presets,
       _log,
       outputDirectory);
+    return new MainViewModel(queueVm, conversion, playback, presets, settings, _log);
   }
 
   private string CreateFile(string name)

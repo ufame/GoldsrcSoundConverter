@@ -19,8 +19,8 @@ public partial class MainWindow : Window
     InitializeComponent();
     _viewModel = viewModel;
     DataContext = _viewModel;
-    Width = _viewModel.InitialWindowWidth;
-    Height = _viewModel.InitialWindowHeight;
+    Width = _viewModel.Settings.InitialWindowWidth;
+    Height = _viewModel.Settings.InitialWindowHeight;
     _viewModel.LogEntries.CollectionChanged += OnLogEntriesChanged;
   }
 
@@ -83,7 +83,7 @@ public partial class MainWindow : Window
 
   private void OnWindowClosing(object? sender, CancelEventArgs e)
   {
-    _viewModel.SaveSettingsWithWindow(Width, Height);
+    _viewModel.Settings.SaveWithWindow(Width, Height);
     _viewModel.Dispose();
   }
 }
