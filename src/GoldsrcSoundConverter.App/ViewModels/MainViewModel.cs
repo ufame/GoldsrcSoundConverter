@@ -1,12 +1,10 @@
 ﻿using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GoldsrcSoundConverter.App.Infrastructure.FilePicker;
 using GoldsrcSoundConverter.App.Infrastructure.Shell;
 using GoldsrcSoundConverter.App.Services;
-using GoldsrcSoundConverter.Core.Ffmpeg;
 using GoldsrcSoundConverter.Core.Models;
 using GoldsrcSoundConverter.Core.Settings;
 
@@ -17,7 +15,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private readonly ISettingsStore _settingsStore;
   private readonly IFilePicker _filePicker;
   private readonly IFolderLauncher _folderLauncher;
-  private readonly IPlaybackCoordinator _playback;
   private readonly IPresetCatalog _presetCatalog;
   private readonly ILogBuffer _log;
   private readonly OutputDirectoryProvider _outputDirectoryProvider;
@@ -28,9 +25,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     ISettingsStore settingsStore,
     IFilePicker filePicker,
     IFolderLauncher folderLauncher,
-    IPlaybackCoordinator playback,
     QueueViewModel queue,
     ConversionViewModel conversion,
+    PlaybackViewModel playback,
     IPresetCatalog presetCatalog,
     ILogBuffer log,
     OutputDirectoryProvider outputDirectoryProvider)
@@ -38,20 +35,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
     _settingsStore = settingsStore;
     _filePicker = filePicker;
     _folderLauncher = folderLauncher;
-    _playback = playback;
-    _outputDirectoryProvider = outputDirectoryProvider;
     Queue = queue;
     Conversion = conversion;
+    Playback = playback;
     _presetCatalog = presetCatalog;
     _log = log;
+    _outputDirectoryProvider = outputDirectoryProvider;
 
-    Queue.PropertyChanged += OnQueuePropertyChanged;
     Queue.StatusChanged += OnQueueStatusChanged;
     Conversion.StatusChanged += OnConversionStatusChanged;
     Conversion.FormatChanged += OnConversionFormatChanged;
     Conversion.OptionsChanged += OnConversionOptionsChanged;
     Conversion.RunFinished += OnConversionRunFinished;
-    _playback.PositionChanged += OnPlaybackPositionChanged;
+    Playback.StatusChanged += OnPlaybackStatusChanged;
 
     var settings = _settingsStore.Load();
     InitialWindowWidth = settings.WindowWidth > 400 ? settings.WindowWidth : 1400;
@@ -64,6 +60,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
   public QueueViewModel Queue { get; }
 
   public ConversionViewModel Conversion { get; }
+
+  public PlaybackViewModel Playback { get; }
 
   public ObservableCollection<string> LogEntries => _log.Entries;
 
@@ -82,121 +80,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
   [ObservableProperty]
   private string _statusText = "Готово";
 
-  [ObservableProperty]
-  private double _playbackPositionSeconds;
-
-  [ObservableProperty]
-  private double _playbackVolume = 1.0;
-
-  [ObservableProperty]
-  private string _playbackPositionText = "00:00.000 / 00:00.000";
-
-  [ObservableProperty]
-  private string _editorTitle = "Выберите файл в очереди";
-
-  public bool HasSelection => Queue.SelectedItem is not null;
-
   public void Dispose()
   {
-    Queue.PropertyChanged -= OnQueuePropertyChanged;
     Queue.StatusChanged -= OnQueueStatusChanged;
     Conversion.StatusChanged -= OnConversionStatusChanged;
     Conversion.FormatChanged -= OnConversionFormatChanged;
     Conversion.OptionsChanged -= OnConversionOptionsChanged;
     Conversion.RunFinished -= OnConversionRunFinished;
-    _playback.PositionChanged -= OnPlaybackPositionChanged;
+    Playback.StatusChanged -= OnPlaybackStatusChanged;
     GC.SuppressFinalize(this);
   }
 
   public void SaveSettingsWithWindow(double width, double height)
   {
     SaveSettingsCore(width, height);
-  }
-
-  [RelayCommand(CanExecute = nameof(HasSelection))]
-  private async Task PlayAsync()
-  {
-    if (Queue.SelectedItem is not { } item)
-    {
-      return;
-    }
-
-    ApplyPlaybackResult(await _playback
-      .PlayAsync(item, new Progress<BootstrapProgress>(ApplyBootstrapProgress))
-      .ConfigureAwait(true));
-  }
-
-  [RelayCommand(CanExecute = nameof(HasSelection))]
-  private void Pause()
-  {
-    _playback.Pause();
-  }
-
-  [RelayCommand(CanExecute = nameof(HasSelection))]
-  private void Stop()
-  {
-    _playback.Stop();
-    PlaybackPositionSeconds = 0;
-  }
-
-  [RelayCommand(CanExecute = nameof(HasSelection))]
-  private async Task PlaySelectionAsync()
-  {
-    if (Queue.SelectedItem is not { } item)
-    {
-      return;
-    }
-
-    ApplyPlaybackResult(await _playback
-      .PlaySelectionAsync(item, new Progress<BootstrapProgress>(ApplyBootstrapProgress))
-      .ConfigureAwait(true));
-  }
-
-  [RelayCommand(CanExecute = nameof(HasSelection))]
-  private async Task PreviewResultAsync()
-  {
-    if (Queue.SelectedItem is not { } item)
-    {
-      return;
-    }
-
-    StatusText = "Рендер результата…";
-
-    var previewDirectory = Path.Combine(
-      Path.GetTempPath(), "GoldsrcSoundConverter", "preview", "result");
-    var options = Conversion.CreatePreviewOptions(previewDirectory);
-    Directory.CreateDirectory(options.OutputDirectory);
-
-    ApplyPlaybackResult(await _playback
-      .PreviewResultAsync(item, options, new Progress<BootstrapProgress>(ApplyBootstrapProgress))
-      .ConfigureAwait(true));
-  }
-
-  [RelayCommand(CanExecute = nameof(HasSelection))]
-  private void SetTrimStart()
-  {
-    if (Queue.SelectedItem is { } item)
-    {
-      StatusText = _playback.SetTrimStart(item);
-    }
-  }
-
-  [RelayCommand(CanExecute = nameof(HasSelection))]
-  private void SetTrimEnd()
-  {
-    if (Queue.SelectedItem is { } item)
-    {
-      StatusText = _playback.SetTrimEnd(item);
-    }
-  }
-
-  [RelayCommand(CanExecute = nameof(HasSelection))]
-  private void ResetTrim()
-  {
-    if (Queue.SelectedItem is { } item)
-    {
-      StatusText = _playback.ResetTrim(item);
-    }
   }
 
   [RelayCommand]
@@ -233,30 +130,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
   {
     SaveSettingsCore(null, null);
     StatusText = "Настройки сохранены";
-  }
-
-  private void ApplyPlaybackResult(PlaybackResult result)
-  {
-    if (result.Status is not null)
-    {
-      StatusText = result.Status;
-    }
-  }
-
-  private void ApplyBootstrapProgress(BootstrapProgress progress)
-  {
-    if (progress.Percent is double percent)
-    {
-      Conversion.OverallProgress = percent;
-    }
-  }
-
-  private void OnPlaybackPositionChanged(object? sender, EventArgs e)
-  {
-    PlaybackPositionSeconds = _playback.PositionSeconds;
-    PlaybackPositionText = _playback.TotalSeconds > 0
-      ? $"{TimeText.Format(PlaybackPositionSeconds)} / {TimeText.Format(_playback.TotalSeconds)}"
-      : "00:00.000 / 00:00.000";
   }
 
   private void RefreshPresets()
@@ -352,38 +225,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
     _log.Add(message);
   }
 
-  private void OnQueuePropertyChanged(object? sender, PropertyChangedEventArgs e)
-  {
-    if (e.PropertyName == nameof(QueueViewModel.SelectedItem))
-    {
-      OnQueueSelectionChanged();
-    }
-  }
-
-  private void OnQueueSelectionChanged()
-  {
-    OnPropertyChanged(nameof(HasSelection));
-    PlayCommand.NotifyCanExecuteChanged();
-    PauseCommand.NotifyCanExecuteChanged();
-    StopCommand.NotifyCanExecuteChanged();
-    PlaySelectionCommand.NotifyCanExecuteChanged();
-    PreviewResultCommand.NotifyCanExecuteChanged();
-    SetTrimStartCommand.NotifyCanExecuteChanged();
-    SetTrimEndCommand.NotifyCanExecuteChanged();
-    ResetTrimCommand.NotifyCanExecuteChanged();
-
-    _playback.Stop();
-    PlaybackPositionSeconds = 0;
-    PlaybackPositionText = "00:00.000 / 00:00.000";
-    EditorTitle = Queue.SelectedItem is null ? "Выберите файл в очереди" : Queue.SelectedItem.FileName;
-  }
-
   private void OnQueueStatusChanged(object? sender, string message)
   {
     StatusText = message;
   }
 
   private void OnConversionStatusChanged(object? sender, string message)
+  {
+    StatusText = message;
+  }
+
+  private void OnPlaybackStatusChanged(object? sender, string message)
   {
     StatusText = message;
   }
@@ -428,10 +280,5 @@ public partial class MainViewModel : ObservableObject, IDisposable
   {
     _outputDirectoryProvider.Value = value;
     Conversion.RecalculateTargetSizes();
-  }
-
-  partial void OnPlaybackVolumeChanged(double value)
-  {
-    _playback.Volume = value;
   }
 }

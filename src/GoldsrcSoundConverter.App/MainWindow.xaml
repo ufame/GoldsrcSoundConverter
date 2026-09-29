@@ -209,33 +209,33 @@
                         <TextBlock DockPanel.Dock="Right"
                                    Margin="10,0,0,0"
                                    Foreground="{StaticResource TextMutedBrush}"
-                                   Text="{Binding PlaybackPositionText}" />
-                        <TextBlock Text="{Binding EditorTitle}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                   Text="{Binding Playback.PlaybackPositionText}" />
+                        <TextBlock Text="{Binding Playback.EditorTitle}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                     </DockPanel>
 
                     <controls:WaveformControl Grid.Row="1"
                                               Margin="0,8,0,8"
                                               DurationSeconds="{Binding Queue.SelectedItem.DurationSeconds}"
-                                              PositionSeconds="{Binding PlaybackPositionSeconds}"
+                                              PositionSeconds="{Binding Playback.PlaybackPositionSeconds}"
                                               SelectionEndSeconds="{Binding Queue.SelectedItem.TrimEndSeconds, Mode=TwoWay}"
                                               SelectionStartSeconds="{Binding Queue.SelectedItem.TrimStartSeconds, Mode=TwoWay}"
                                               Waveform="{Binding Queue.SelectedItem.Waveform}" />
 
                     <StackPanel Grid.Row="2" Orientation="Horizontal">
-                        <Button Content="▶ Играть" IsEnabled="{Binding Queue.HasSelection}" Command="{Binding PlayCommand}" />
-                        <Button Content="⏸ Пауза" Margin="6,0,0,0" IsEnabled="{Binding Queue.HasSelection}" Command="{Binding PauseCommand}" />
-                        <Button Content="■ Стоп" Margin="6,0,0,0" IsEnabled="{Binding Queue.HasSelection}" Command="{Binding StopCommand}" />
-                        <Button Content="▶ Играть выделенное" Margin="14,0,0,0" IsEnabled="{Binding Queue.HasSelection}" Command="{Binding PlaySelectionCommand}" />
-                        <Button Content="▶ Результат" Margin="6,0,0,0" IsEnabled="{Binding Queue.HasSelection}" Command="{Binding PreviewResultCommand}" />
-                        <Button Content="Начало ← позиция" Margin="14,0,0,0" IsEnabled="{Binding Queue.HasSelection}" Command="{Binding SetTrimStartCommand}" />
-                        <Button Content="Конец ← позиция" Margin="6,0,0,0" IsEnabled="{Binding Queue.HasSelection}" Command="{Binding SetTrimEndCommand}" />
-                        <Button Content="Сбросить обрезку" Margin="6,0,0,0" IsEnabled="{Binding Queue.HasSelection}" Command="{Binding ResetTrimCommand}" />
+                        <Button Content="▶ Играть" IsEnabled="{Binding Playback.HasSelection}" Command="{Binding Playback.PlayCommand}" />
+                        <Button Content="⏸ Пауза" Margin="6,0,0,0" IsEnabled="{Binding Playback.HasSelection}" Command="{Binding Playback.PauseCommand}" />
+                        <Button Content="■ Стоп" Margin="6,0,0,0" IsEnabled="{Binding Playback.HasSelection}" Command="{Binding Playback.StopCommand}" />
+                        <Button Content="▶ Играть выделенное" Margin="14,0,0,0" IsEnabled="{Binding Playback.HasSelection}" Command="{Binding Playback.PlaySelectionCommand}" />
+                        <Button Content="▶ Результат" Margin="6,0,0,0" IsEnabled="{Binding Playback.HasSelection}" Command="{Binding Playback.PreviewResultCommand}" />
+                        <Button Content="Начало ← позиция" Margin="14,0,0,0" IsEnabled="{Binding Playback.HasSelection}" Command="{Binding Playback.SetTrimStartCommand}" />
+                        <Button Content="Конец ← позиция" Margin="6,0,0,0" IsEnabled="{Binding Playback.HasSelection}" Command="{Binding Playback.SetTrimEndCommand}" />
+                        <Button Content="Сбросить обрезку" Margin="6,0,0,0" IsEnabled="{Binding Playback.HasSelection}" Command="{Binding Playback.ResetTrimCommand}" />
                         <Slider Width="120"
                                 Margin="16,0,0,0"
                                 VerticalAlignment="Center"
                                 Maximum="1"
                                 Minimum="0"
-                                Value="{Binding PlaybackVolume}" />
+                                Value="{Binding Playback.PlaybackVolume}" />
                         <TextBlock Margin="6,0,0,0" Foreground="{StaticResource TextMutedBrush}" Text="громкость" />
                     </StackPanel>
                 </Grid>

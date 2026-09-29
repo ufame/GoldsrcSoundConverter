@@ -86,13 +86,14 @@ public sealed class DisposeTests : IDisposable
       new QueueConversionPresenter(queue),
       _log,
       outputDirectory);
+    var playback = new PlaybackViewModel(queueVm, conversion, new PlaybackCoordinator(_playback, _log));
     return new MainViewModel(
       _settings,
       _filePicker,
       _folderLauncher,
-      new PlaybackCoordinator(_playback, _log),
       queueVm,
       conversion,
+      playback,
       new PresetCatalog(),
       _log,
       outputDirectory);
