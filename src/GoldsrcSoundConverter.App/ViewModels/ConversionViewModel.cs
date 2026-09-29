@@ -190,7 +190,6 @@ public sealed partial class ConversionViewModel : ObservableObject, IDisposable
   {
     _queue.ItemsChanged -= OnQueueItemsChanged;
     _runController.BusyChanged -= OnRunControllerBusyChanged;
-    _runController.Dispose();
     GC.SuppressFinalize(this);
   }
 

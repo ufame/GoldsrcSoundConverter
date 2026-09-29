@@ -181,7 +181,7 @@ public sealed class ConversionViewModelTests : IDisposable
   }
 
   [Fact]
-  public void DisposeDetachesFromRunControllerAndDisposesIt()
+  public void DisposeDetachesFromRunController()
   {
     var runController = new FakeRunController();
     var vm = CreateConversion(out _, runController);
@@ -193,7 +193,6 @@ public sealed class ConversionViewModelTests : IDisposable
     runController.RaiseBusyChanged();
 
     Assert.False(vm.IsBusy);
-    Assert.True(runController.Disposed);
   }
 
   private ConversionViewModel CreateConversion(

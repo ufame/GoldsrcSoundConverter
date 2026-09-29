@@ -143,6 +143,17 @@ public sealed class QueueViewModelTests : IDisposable
   }
 
   [Fact]
+  public void DisposeIsIdempotent()
+  {
+    var vm = CreateViewModel();
+
+    vm.Dispose();
+    vm.Dispose();
+
+    Assert.Empty(vm.Items);
+  }
+
+  [Fact]
   public async Task ItemProbedIsForwardedAsItemUpdated()
   {
     var vm = CreateViewModel();

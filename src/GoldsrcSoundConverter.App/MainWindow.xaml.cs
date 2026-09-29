@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     Width = _viewModel.Settings.InitialWindowWidth;
     Height = _viewModel.Settings.InitialWindowHeight;
     _viewModel.Log.Entries.CollectionChanged += OnLogEntriesChanged;
+    Closed += OnWindowClosed;
   }
 
   protected override void OnSourceInitialized(EventArgs e)
@@ -81,9 +82,13 @@ public partial class MainWindow : Window
     }
   }
 
+  private void OnWindowClosed(object? sender, EventArgs e)
+  {
+    _viewModel.Log.Entries.CollectionChanged -= OnLogEntriesChanged;
+  }
+
   private void OnWindowClosing(object? sender, CancelEventArgs e)
   {
     _viewModel.Settings.SaveWithWindow(Width, Height);
-    _viewModel.Dispose();
   }
 }

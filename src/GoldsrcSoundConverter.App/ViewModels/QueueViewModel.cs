@@ -18,7 +18,7 @@ public sealed partial class QueueViewModel : ObservableObject, IDisposable
     _queue = queue;
     _filePicker = filePicker;
     _waveforms = waveforms;
-    _queue.ItemProbed += (_, item) => ItemUpdated?.Invoke(this, item);
+    _queue.ItemProbed += OnItemProbed;
   }
 
   public ObservableCollection<QueueItemViewModel> Items => _queue.Items;
@@ -114,8 +114,13 @@ public sealed partial class QueueViewModel : ObservableObject, IDisposable
 
   public void Dispose()
   {
-    _queue.Dispose();
+    _queue.ItemProbed -= OnItemProbed;
     GC.SuppressFinalize(this);
+  }
+
+  private void OnItemProbed(object? sender, QueueItemViewModel item)
+  {
+    ItemUpdated?.Invoke(this, item);
   }
 
   partial void OnSelectedItemChanged(QueueItemViewModel? value)
