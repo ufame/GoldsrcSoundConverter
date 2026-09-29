@@ -31,7 +31,20 @@ public static class ServiceCollectionExtensions
     // Per-window state: the view model, its queue and the run controller must share one instance.
     services.AddScoped<IQueueManager, QueueManager>();
     services.AddScoped<IConversionRunController, ConversionRunController>();
-    services.AddScoped<IQueueConversionPresenter, QueueConversionPresenter>();
+    services.AddScoped<QueueViewModel>();
+    services.AddScoped<OutputDirectoryProvider>();
+    services.AddScoped<ConversionViewModel>(sp => new ConversionViewModel(
+      sp.GetRequiredService<QueueViewModel>(),
+      sp.GetRequiredService<IFilePicker>(),
+      sp.GetRequiredService<IConversionService>(),
+      sp.GetRequiredService<IConversionRequestFactory>(),
+      sp.GetRequiredService<IConversionRunController>(),
+      sp.GetRequiredService<ILogBuffer>(),
+      sp.GetRequiredService<OutputDirectoryProvider>()));
+    services.AddScoped<PlaybackViewModel>();
+    services.AddScoped<PresetViewModel>();
+    services.AddScoped<SettingsViewModel>();
+    services.AddScoped<LogViewModel>();
     services.AddScoped<MainViewModel>();
     services.AddScoped<MainWindow>();
 

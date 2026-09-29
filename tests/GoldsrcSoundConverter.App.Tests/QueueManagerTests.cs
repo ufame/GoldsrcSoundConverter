@@ -1,4 +1,5 @@
 using GoldsrcSoundConverter.App.Services;
+using GoldsrcSoundConverter.App.ViewModels;
 using GoldsrcSoundConverter.Core.Models;
 using GoldsrcSoundConverter.Tests.Fakes;
 
@@ -44,8 +45,8 @@ public sealed class QueueManagerTests : IDisposable
     var first = CreateFile("a.wav");
     var second = CreateFile("b.ogg");
 
-    var added = manager.Add(new[] { first, second }, Options());
-    var addedAgain = manager.Add(new[] { first, second }, Options());
+    var added = manager.Add(new[] { first, second });
+    var addedAgain = manager.Add(new[] { first, second });
 
     Assert.Equal(2, added);
     Assert.Equal(0, addedAgain);
@@ -57,7 +58,7 @@ public sealed class QueueManagerTests : IDisposable
   {
     var manager = CreateManager();
 
-    var added = manager.Add(new[] { CreateFile("notes.txt") }, Options());
+    var added = manager.Add(new[] { CreateFile("notes.txt") });
 
     Assert.Equal(0, added);
     Assert.Empty(manager.Items);
@@ -69,7 +70,7 @@ public sealed class QueueManagerTests : IDisposable
     var manager = CreateManager();
     var first = CreateFile("a.wav");
     var second = CreateFile("b.wav");
-    manager.Add(new[] { first, second }, Options());
+    manager.Add(new[] { first, second });
     var secondItem = manager.Items[1];
     var secondId = secondItem.Id;
 
@@ -85,7 +86,7 @@ public sealed class QueueManagerTests : IDisposable
   public void ClearEmptiesQueue()
   {
     var manager = CreateManager();
-    manager.Add(new[] { CreateFile("a.wav"), CreateFile("b.wav") }, Options());
+    manager.Add(new[] { CreateFile("a.wav"), CreateFile("b.wav") });
 
     manager.Clear();
 
@@ -96,7 +97,7 @@ public sealed class QueueManagerTests : IDisposable
   public void RecalculateTargetSizesUsesProvidedOptions()
   {
     var manager = CreateManager();
-    manager.Add(new[] { CreateFile("a.wav") }, Options());
+    manager.Add(new[] { CreateFile("a.wav") });
     var item = manager.Items[0];
     item.Info = CreateInfo(item.SourcePath);
 
@@ -106,33 +107,56 @@ public sealed class QueueManagerTests : IDisposable
   }
 
   [Fact]
-  public async Task ProbeResultIsAppliedToItem()
+  public async Task ProbeResultIsAppliedToItemAndRaisesEvent()
   {
     var manager = CreateManager();
-    manager.Add(new[] { CreateFile("a.wav") }, Options());
+    QueueItemViewModel? probed = null;
+    manager.ItemProbed += (_, item) => probed = item;
+    manager.Add(new[] { CreateFile("a.wav") });
     var item = manager.Items[0];
 
-    await WaitUntil(() => item.Info is not null);
+    await WaitUntil(() => probed is not null);
 
+    Assert.Same(item, probed);
     Assert.NotNull(item.Info);
+    manager.RecalculateTargetSizes(Options() with { Format = OutputAudioFormat.Wav });
     Assert.NotEqual("—", item.TargetSizeText);
   }
 
   [Fact]
-  public async Task ProbeResultIsDiscardedWhenItemRemovedBeforeCompletion()
+  public async Task RemovingItemCancelsItsPendingProbe()
   {
     _conversion.ProbeGate = new TaskCompletionSource();
     using var manager = CreateManager();
-    manager.Add(new[] { CreateFile("a.wav") }, Options());
+    manager.Add(new[] { CreateFile("a.wav") });
     var item = manager.Items[0];
 
     manager.Remove(item);
-    _conversion.ProbeGate.SetResult();
 
-    await WaitUntil(() => _conversion.ProbeCompleted >= 1);
+    await WaitUntil(() => _conversion.ProbeCancellations >= 1);
+    _conversion.ProbeGate.SetResult();
     await Task.Delay(50);
 
     Assert.Null(item.Info);
+  }
+
+  [Fact]
+  public async Task RemovingOneItemKeepsOtherProbesRunning()
+  {
+    _conversion.ProbeGate = new TaskCompletionSource();
+    using var manager = CreateManager();
+    manager.Add(new[] { CreateFile("a.wav"), CreateFile("b.wav") });
+    var removed = manager.Items[0];
+    var kept = manager.Items[1];
+
+    manager.Remove(removed);
+    await WaitUntil(() => _conversion.ProbeCancellations >= 1);
+
+    _conversion.ProbeGate.SetResult();
+    await WaitUntil(() => kept.Info is not null);
+
+    Assert.Null(removed.Info);
+    Assert.True(_conversion.ProbeCancellations >= 1);
   }
 
   [Fact]
@@ -140,7 +164,7 @@ public sealed class QueueManagerTests : IDisposable
   {
     _conversion.ProbeGate = new TaskCompletionSource();
     using var manager = CreateManager();
-    manager.Add(new[] { CreateFile("a.wav") }, Options());
+    manager.Add(new[] { CreateFile("a.wav") });
 
     manager.Clear();
 
@@ -153,7 +177,7 @@ public sealed class QueueManagerTests : IDisposable
   {
     _conversion.ProbeGate = new TaskCompletionSource();
     using var manager = CreateManager();
-    manager.Add(new[] { CreateFile("a.wav") }, Options());
+    manager.Add(new[] { CreateFile("a.wav") });
 
     manager.Dispose();
     manager.Dispose();

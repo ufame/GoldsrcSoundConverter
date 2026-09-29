@@ -1,6 +1,5 @@
 using GoldsrcSoundConverter.App.ViewModels;
 using GoldsrcSoundConverter.Core.Audio;
-using GoldsrcSoundConverter.Core.Models;
 
 namespace GoldsrcSoundConverter.App.Services;
 
@@ -15,7 +14,7 @@ public sealed class WaveformLoader : IWaveformLoader
     _log = log;
   }
 
-  public async Task EnsureLoadedAsync(QueueItemViewModel item, ConversionOptions options)
+  public async Task EnsureLoadedAsync(QueueItemViewModel item)
   {
     if (item.Waveform is not null || item.IsWaveformLoading)
     {
@@ -34,10 +33,6 @@ public sealed class WaveformLoader : IWaveformLoader
       }
 
       item.Waveform = data;
-      if (item.Info is null)
-      {
-        item.UpdateTargetSize(options);
-      }
     }
     catch (Exception ex)
     {

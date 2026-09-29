@@ -1,4 +1,4 @@
-using GoldsrcSoundConverter.App.Infrastructure.Audio;
+﻿using GoldsrcSoundConverter.App.Infrastructure.Audio;
 using GoldsrcSoundConverter.App.Services;
 using GoldsrcSoundConverter.App.ViewModels;
 using GoldsrcSoundConverter.Core.Ffmpeg;
@@ -75,18 +75,26 @@ public sealed class DisposeTests : IDisposable
   {
     _settings.Settings.OutputDirectory = _temp.Path;
     var queue = new QueueManager(_conversion, _log);
-    return new MainViewModel(
+    var queueVm = new QueueViewModel(queue, _filePicker, new WaveformLoader(_conversion, _log));
+    var outputDirectory = new OutputDirectoryProvider { Value = _temp.Path };
+    var conversion = new ConversionViewModel(
+      queueVm,
+      _filePicker,
+      _conversion,
+      new ConversionRequestFactory(),
+      new ConversionRunController(_conversion, _log),
+            _log,
+      outputDirectory);
+    var playback = new PlaybackViewModel(queueVm, conversion, new PlaybackCoordinator(_playback, _log));
+    var presets = new PresetViewModel(conversion, new PresetCatalog());
+    var settings = new SettingsViewModel(
       _settings,
       _filePicker,
       _folderLauncher,
-      _conversion,
-      new PlaybackCoordinator(_playback, _log),
-      queue,
-      new ConversionRequestFactory(),
-      new PresetCatalog(),
-      new ConversionRunController(_conversion, _log),
-      new QueueConversionPresenter(queue),
-      new WaveformLoader(_conversion, _log),
-      _log);
+      conversion,
+      presets,
+      _log,
+      outputDirectory);
+    return new MainViewModel(queueVm, conversion, playback, presets, settings, new LogViewModel(_log));
   }
 }
