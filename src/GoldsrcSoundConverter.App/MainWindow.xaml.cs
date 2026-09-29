@@ -21,7 +21,7 @@ public partial class MainWindow : Window
     DataContext = _viewModel;
     Width = _viewModel.Settings.InitialWindowWidth;
     Height = _viewModel.Settings.InitialWindowHeight;
-    _viewModel.LogEntries.CollectionChanged += OnLogEntriesChanged;
+    _viewModel.Log.Entries.CollectionChanged += OnLogEntriesChanged;
   }
 
   protected override void OnSourceInitialized(EventArgs e)

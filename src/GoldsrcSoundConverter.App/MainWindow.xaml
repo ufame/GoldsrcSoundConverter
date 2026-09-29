@@ -248,7 +248,7 @@
                          Foreground="{StaticResource TextMutedBrush}"
                          FontFamily="Consolas"
                          FontSize="12"
-                         ItemsSource="{Binding LogEntries}" />
+                         ItemsSource="{Binding Log.Entries}" />
             </TabItem>
         </TabControl>
 

@@ -1,4 +1,4 @@
-using GoldsrcSoundConverter.App.Infrastructure.Audio;
+﻿using GoldsrcSoundConverter.App.Infrastructure.Audio;
 using GoldsrcSoundConverter.App.Services;
 using GoldsrcSoundConverter.App.ViewModels;
 using GoldsrcSoundConverter.Core.Ffmpeg;
@@ -96,6 +96,6 @@ public sealed class DisposeTests : IDisposable
       presets,
       _log,
       outputDirectory);
-    return new MainViewModel(queueVm, conversion, playback, presets, settings, _log);
+    return new MainViewModel(queueVm, conversion, playback, presets, settings, new LogViewModel(_log));
   }
 }

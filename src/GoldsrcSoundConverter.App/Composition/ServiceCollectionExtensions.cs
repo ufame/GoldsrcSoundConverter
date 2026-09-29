@@ -46,6 +46,7 @@ public static class ServiceCollectionExtensions
     services.AddScoped<PlaybackViewModel>();
     services.AddScoped<PresetViewModel>();
     services.AddScoped<SettingsViewModel>();
+    services.AddScoped<LogViewModel>();
     services.AddScoped<MainViewModel>();
     services.AddScoped<MainWindow>();
 

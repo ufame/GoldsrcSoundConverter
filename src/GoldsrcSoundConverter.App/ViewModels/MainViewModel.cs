@@ -1,27 +1,23 @@
-﻿using System.Collections.ObjectModel;
-using CommunityToolkit.Mvvm.ComponentModel;
-using GoldsrcSoundConverter.App.Services;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace GoldsrcSoundConverter.App.ViewModels;
 
 public partial class MainViewModel : ObservableObject, IDisposable
 {
-  private readonly ILogBuffer _log;
-
   public MainViewModel(
     QueueViewModel queue,
     ConversionViewModel conversion,
     PlaybackViewModel playback,
     PresetViewModel presets,
     SettingsViewModel settings,
-    ILogBuffer log)
+    LogViewModel log)
   {
     Queue = queue;
     Conversion = conversion;
     Playback = playback;
     Presets = presets;
     Settings = settings;
-    _log = log;
+    Log = log;
 
     Queue.StatusChanged += OnQueueStatusChanged;
     Conversion.StatusChanged += OnConversionStatusChanged;
@@ -29,7 +25,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     Playback.StatusChanged += OnPlaybackStatusChanged;
     Settings.StatusChanged += OnSettingsStatusChanged;
 
-    AppendLog("Готово к работе. Перетащите файлы в окно или нажмите «Добавить файлы».");
+    Log.Append("Готово к работе. Перетащите файлы в окно или нажмите «Добавить файлы».");
   }
 
   public QueueViewModel Queue { get; }
@@ -42,7 +38,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   public SettingsViewModel Settings { get; }
 
-  public ObservableCollection<string> LogEntries => _log.Entries;
+  public LogViewModel Log { get; }
 
   [ObservableProperty]
   private string _statusText = "Готово";
@@ -55,11 +51,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     Playback.StatusChanged -= OnPlaybackStatusChanged;
     Settings.StatusChanged -= OnSettingsStatusChanged;
     GC.SuppressFinalize(this);
-  }
-
-  private void AppendLog(string message)
-  {
-    _log.Add(message);
   }
 
   private void OnQueueStatusChanged(object? sender, string message)

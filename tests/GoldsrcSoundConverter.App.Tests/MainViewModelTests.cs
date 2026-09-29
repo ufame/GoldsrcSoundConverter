@@ -25,7 +25,7 @@ public sealed class MainViewModelTests : IDisposable
   {
     var vm = CreateViewModel();
 
-    Assert.Contains(vm.LogEntries, entry => entry.Contains("Готово к работе", StringComparison.Ordinal));
+    Assert.Contains(vm.Log.Entries, entry => entry.Contains("Готово к работе", StringComparison.Ordinal));
   }
 
   [Fact]
@@ -111,7 +111,7 @@ public sealed class MainViewModelTests : IDisposable
       presets,
       _log,
       outputDirectory);
-    return new MainViewModel(queueVm, conversion, playback, presets, settings, _log);
+    return new MainViewModel(queueVm, conversion, playback, presets, settings, new LogViewModel(_log));
   }
 
   private string CreateFile(string name)
