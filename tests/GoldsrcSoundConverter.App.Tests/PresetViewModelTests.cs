@@ -99,8 +99,7 @@ public sealed class PresetViewModelTests
       _conversion,
       new ConversionRequestFactory(),
       new ConversionRunController(_conversion, _log),
-      new QueueConversionPresenter(queue),
-      _log,
+            _log,
       outputDirectory);
     return (new PresetViewModel(conversion, new PresetCatalog()), conversion);
   }

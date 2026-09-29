@@ -98,8 +98,7 @@ public sealed class MainViewModelTests : IDisposable
       _conversion,
       new ConversionRequestFactory(),
       runController ?? new ConversionRunController(_conversion, _log),
-      new QueueConversionPresenter(queue),
-      _log,
+            _log,
       outputDirectory);
     var playback = new PlaybackViewModel(queueVm, conversion, new PlaybackCoordinator(_playback, _log));
     var presets = new PresetViewModel(conversion, new PresetCatalog());

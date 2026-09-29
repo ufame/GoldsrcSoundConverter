@@ -195,6 +195,186 @@ public sealed class ConversionViewModelTests : IDisposable
     Assert.False(vm.IsBusy);
   }
 
+  [Fact]
+  public void BeginRunResetsStateAndReturnsSnapshot()
+  {
+    var vm = CreateConversion(out var ctx);
+    var first = AddItem(ctx.Queue, @"C:\in\a.wav");
+    first.Stage = ConversionStage.Failed;
+    first.Progress = 0.5;
+    first.Error = "old";
+    first.OutputPath = "old.wav";
+    var second = AddItem(ctx.Queue, @"C:\in\b.wav");
+
+    var workItems = vm.BeginRun();
+
+    Assert.Equal(2, workItems.Count);
+    Assert.Equal(new[] { first.Id, second.Id }, workItems.Select(workItem => workItem.Id));
+    Assert.All(new[] { first, second }, item =>
+    {
+      Assert.Equal(ConversionStage.Pending, item.Stage);
+      Assert.Equal(0, item.Progress);
+      Assert.Null(item.Error);
+      Assert.Null(item.OutputPath);
+    });
+  }
+
+  [Fact]
+  public void BeginRunMapsTrimsAndKnownInfo()
+  {
+    var vm = CreateConversion(out var ctx);
+    var item = new QueueItemViewModel(@"C:\in\clip.ogg", @"C:\in")
+    {
+      TrimStartSeconds = 1,
+      TrimEndSeconds = 4,
+    };
+    item.Info = new AudioInfo(item.SourcePath, "ogg", "vorbis", TimeSpan.FromSeconds(5), 44100, 2, 128000, 10);
+    ctx.Queue.Items.Add(item);
+
+    var workItem = Assert.Single(vm.BeginRun());
+
+    Assert.Equal(item.Id, workItem.Id);
+    Assert.Equal(item.SourcePath, workItem.SourcePath);
+    Assert.Equal(item.SourceRoot, workItem.SourceRoot);
+    Assert.Equal(TimeSpan.FromSeconds(1), workItem.TrimStart);
+    Assert.Equal(TimeSpan.FromSeconds(4), workItem.TrimEnd);
+    Assert.Same(item.Info, workItem.KnownInfo);
+  }
+
+  [Fact]
+  public void ProgressHandlerUpdatesItemAndOverall()
+  {
+    var vm = CreateConversion(out var ctx);
+    var first = AddItem(ctx.Queue, @"C:\in\a.wav");
+    var second = AddItem(ctx.Queue, @"C:\in\b.wav");
+    vm.BeginRun();
+    var overall = new List<double>();
+    var handler = vm.CreateProgressHandler(overall.Add);
+
+    handler.Report(new ConversionProgress(first.Id, ConversionStage.Converting, 0.5, null));
+
+    Assert.Equal(ConversionStage.Converting, first.Stage);
+    Assert.Equal(0.5, first.Progress, 3);
+    Assert.Contains(overall, value => Math.Abs(value - 0.25) < 0.001);
+
+    handler.Report(new ConversionProgress(first.Id, ConversionStage.Completed, 1, null));
+    handler.Report(new ConversionProgress(second.Id, ConversionStage.Converting, 0.5, null));
+
+    Assert.Contains(overall, value => Math.Abs(value - 0.75) < 0.001);
+  }
+
+  [Fact]
+  public void ProgressForItemOutsideSnapshotIsIgnored()
+  {
+    var vm = CreateConversion(out var ctx);
+    vm.BeginRun();
+    var late = AddItem(ctx.Queue, @"C:\in\late.wav");
+    var handler = vm.CreateProgressHandler();
+
+    handler.Report(new ConversionProgress(late.Id, ConversionStage.Converting, 0.5, null));
+
+    Assert.Equal(ConversionStage.Pending, late.Stage);
+    Assert.Equal(0, late.Progress);
+  }
+
+  [Fact]
+  public void ProbeHandlerAppliesInfoAndTargetSize()
+  {
+    var vm = CreateConversion(out var ctx);
+    var item = AddItem(ctx.Queue, @"C:\in\a.wav");
+    vm.BeginRun();
+    var handler = vm.CreateProbeHandler(RunOptions());
+
+    handler.Report(Probe(item.SourcePath, item.Id));
+
+    Assert.NotNull(item.Info);
+    Assert.NotEqual("—", item.TargetSizeText);
+  }
+
+  [Fact]
+  public void ProbeIsIgnoredWhenInfoAlreadyKnown()
+  {
+    var vm = CreateConversion(out var ctx);
+    var item = AddItem(ctx.Queue, @"C:\in\a.wav");
+    var known = new AudioInfo(item.SourcePath, "wav", "pcm_s16le", TimeSpan.FromSeconds(1), 22050, 1, 352800, 50);
+    item.Info = known;
+    vm.BeginRun();
+    var handler = vm.CreateProbeHandler(RunOptions());
+
+    handler.Report(Probe(item.SourcePath, item.Id));
+
+    Assert.Same(known, item.Info);
+  }
+
+  [Fact]
+  public void CompleteAppliesOutcomes()
+  {
+    var vm = CreateConversion(out var ctx);
+    var completed = AddItem(ctx.Queue, @"C:\in\ok.wav");
+    var failed = AddItem(ctx.Queue, @"C:\in\bad.wav");
+    var skipped = AddItem(ctx.Queue, @"C:\in\skip.wav");
+    vm.BeginRun();
+    var result = new ConversionRunResult(
+      new ConversionRunSummary(1, 1, 1),
+      new[]
+      {
+        new ConversionOutcome(completed.Id, true, false, @"C:\out\ok.wav", null, null),
+        new ConversionOutcome(failed.Id, false, false, null, "boom", null),
+        new ConversionOutcome(skipped.Id, true, true, null, null, null),
+      });
+
+    vm.Complete(result);
+
+    Assert.Equal(ConversionStage.Completed, completed.Stage);
+    Assert.Equal(1, completed.Progress);
+    Assert.Equal(@"C:\out\ok.wav", completed.OutputPath);
+    Assert.Equal(ConversionStage.Failed, failed.Stage);
+    Assert.Equal("boom", failed.Error);
+    Assert.Equal(ConversionStage.Skipped, skipped.Stage);
+  }
+
+  [Fact]
+  public void CompleteWithCancellationResetsOnlyInFlightItems()
+  {
+    var vm = CreateConversion(out var ctx);
+    var first = AddItem(ctx.Queue, @"C:\in\a.wav");
+    var second = AddItem(ctx.Queue, @"C:\in\b.wav");
+    vm.BeginRun();
+    var handler = vm.CreateProgressHandler();
+    handler.Report(new ConversionProgress(first.Id, ConversionStage.Converting, 0.7, null));
+    second.Stage = ConversionStage.Failed;
+
+    vm.Complete(new ConversionRunResult(
+      new ConversionRunSummary(0, 0, 0, Cancelled: true),
+      Array.Empty<ConversionOutcome>()));
+
+    Assert.Equal(ConversionStage.Pending, first.Stage);
+    Assert.Equal(0, first.Progress);
+    Assert.Equal(ConversionStage.Failed, second.Stage);
+  }
+
+  private static ConversionOptions RunOptions()
+  {
+    return new ConversionOptions
+    {
+      OutputDirectory = @"C:\out",
+      AsciiNames = true,
+      LowercaseNames = true,
+    };
+  }
+
+  private static ProbeResult Probe(string path, Guid id)
+  {
+    return new ProbeResult(id, new AudioInfo(path, "wav", "pcm_s16le", TimeSpan.FromSeconds(10), 22050, 1, 352800, 100));
+  }
+
+  private static QueueItemViewModel AddItem(QueueViewModel queue, string path)
+  {
+    var item = new QueueItemViewModel(path, null);
+    queue.Items.Add(item);
+    return item;
+  }
+
   private ConversionViewModel CreateConversion(
     out Context context,
     IConversionRunController? runController = null,
@@ -209,8 +389,7 @@ public sealed class ConversionViewModelTests : IDisposable
       _conversion,
       new ConversionRequestFactory(),
       runController ?? new ConversionRunController(_conversion, _log),
-      new QueueConversionPresenter(queue),
-      _log,
+            _log,
       new OutputDirectoryProvider { Value = outputDirectory });
   }
 

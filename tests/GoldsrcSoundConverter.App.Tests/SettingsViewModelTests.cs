@@ -157,8 +157,7 @@ public sealed class SettingsViewModelTests : IDisposable
       _conversionService,
       new ConversionRequestFactory(),
       new ConversionRunController(_conversionService, _log),
-      new QueueConversionPresenter(queue),
-      _log,
+            _log,
       outputDirectory);
     var presets = new PresetViewModel(conversion, new PresetCatalog());
     var vm = new SettingsViewModel(

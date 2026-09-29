@@ -206,8 +206,7 @@ public sealed class PlaybackViewModelTests : IDisposable
       _conversion,
       new ConversionRequestFactory(),
       new ConversionRunController(_conversion, _log),
-      new QueueConversionPresenter(queue),
-      _log,
+            _log,
       outputDirectory);
     return (new PlaybackViewModel(queueVm, conversion, new PlaybackCoordinator(_playback, _log)), queueVm);
   }

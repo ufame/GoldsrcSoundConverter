@@ -16,9 +16,11 @@ public sealed partial class ConversionViewModel : ObservableObject, IDisposable
   private readonly IConversionService _conversionService;
   private readonly IConversionRequestFactory _requestFactory;
   private readonly IConversionRunController _runController;
-  private readonly IQueueConversionPresenter _presenter;
   private readonly ILogBuffer _log;
   private readonly OutputDirectoryProvider _outputDirectory;
+
+  private QueueItemViewModel[] _runItems = Array.Empty<QueueItemViewModel>();
+  private Dictionary<Guid, QueueItemViewModel> _runItemsById = new();
 
   public ConversionViewModel(
     QueueViewModel queue,
@@ -26,7 +28,6 @@ public sealed partial class ConversionViewModel : ObservableObject, IDisposable
     IConversionService conversionService,
     IConversionRequestFactory requestFactory,
     IConversionRunController runController,
-    IQueueConversionPresenter presenter,
     ILogBuffer log,
     OutputDirectoryProvider outputDirectory)
   {
@@ -35,7 +36,6 @@ public sealed partial class ConversionViewModel : ObservableObject, IDisposable
     _conversionService = conversionService;
     _requestFactory = requestFactory;
     _runController = runController;
-    _presenter = presenter;
     _log = log;
     _outputDirectory = outputDirectory;
 
@@ -226,18 +226,18 @@ public sealed partial class ConversionViewModel : ObservableObject, IDisposable
 
     try
     {
-      var workItems = _presenter.BeginRun();
+      var workItems = BeginRun();
 
       var result = await _runController
         .RunAsync(
           workItems,
           options,
-          _presenter.CreateProgressHandler(value => OverallProgress = value),
-          _presenter.CreateProbeHandler(options),
+          CreateProgressHandler(value => OverallProgress = value),
+          CreateProbeHandler(options),
           new Progress<BootstrapProgress>(ApplyBootstrapProgress))
         .ConfigureAwait(true);
 
-      _presenter.Complete(result);
+      Complete(result);
       UpdateFfmpegStatus();
 
       string status;
@@ -281,6 +281,115 @@ public sealed partial class ConversionViewModel : ObservableObject, IDisposable
     if (file is not null)
     {
       FfmpegCustomPath = file;
+    }
+  }
+
+  internal IReadOnlyList<ConversionWorkItem> BeginRun()
+  {
+    _runItems = _queue.Items.ToArray();
+    _runItemsById = _runItems.ToDictionary(item => item.Id);
+
+    foreach (var item in _runItems)
+    {
+      item.Progress = 0;
+      item.Error = null;
+      item.OutputPath = null;
+      item.Stage = ConversionStage.Pending;
+    }
+
+    return _runItems.Select(item => item.ToWorkItem()).ToArray();
+  }
+
+  internal IProgress<ConversionProgress> CreateProgressHandler(Action<double>? onOverallProgress = null)
+  {
+    return new ActionProgress<ConversionProgress>(
+      progress => ApplyProgress(progress, onOverallProgress));
+  }
+
+  internal IProgress<ProbeResult> CreateProbeHandler(ConversionOptions options)
+  {
+    return new ActionProgress<ProbeResult>(probe => ApplyProbe(probe, options));
+  }
+
+  internal void Complete(ConversionRunResult result)
+  {
+    if (result.Summary.Cancelled)
+    {
+      ResetInFlight();
+      return;
+    }
+
+    ApplyOutcomes(result.Outcomes);
+  }
+
+  private void ApplyProgress(ConversionProgress progress, Action<double>? onOverallProgress)
+  {
+    if (!_runItemsById.TryGetValue(progress.JobId, out var item))
+    {
+      return;
+    }
+
+    item.Stage = progress.Stage;
+    item.Progress = progress.Percent;
+
+    if (progress.Stage == ConversionStage.Converting && onOverallProgress is not null)
+    {
+      var finished = _runItems.Count(i => i.Stage is ConversionStage.Completed
+        or ConversionStage.Skipped
+        or ConversionStage.Failed);
+      onOverallProgress(_runItems.Length == 0
+        ? 0
+        : Math.Clamp((finished + progress.Percent) / _runItems.Length, 0, 1));
+    }
+  }
+
+  private void ApplyProbe(ProbeResult probe, ConversionOptions options)
+  {
+    if (!_runItemsById.TryGetValue(probe.Id, out var item) || item.Info is not null)
+    {
+      return;
+    }
+
+    item.Info = probe.Info;
+    item.UpdateTargetSize(options);
+  }
+
+  private void ApplyOutcomes(IReadOnlyList<ConversionOutcome> outcomes)
+  {
+    foreach (var outcome in outcomes)
+    {
+      if (!_runItemsById.TryGetValue(outcome.JobId, out var item))
+      {
+        continue;
+      }
+
+      if (outcome.Success && outcome.Skipped)
+      {
+        item.Stage = ConversionStage.Skipped;
+      }
+      else if (outcome.Success)
+      {
+        item.Stage = ConversionStage.Completed;
+        item.Progress = 1;
+        item.OutputPath = outcome.OutputPath;
+      }
+      else
+      {
+        item.Stage = ConversionStage.Failed;
+        item.Error = outcome.Error;
+      }
+    }
+  }
+
+  private void ResetInFlight()
+  {
+    foreach (var item in _runItems.Where(i => i.Stage is ConversionStage.Pending
+      or ConversionStage.Probing
+      or ConversionStage.Normalizing
+      or ConversionStage.Converting))
+    {
+      item.Stage = ConversionStage.Pending;
+      item.Progress = 0;
     }
   }
 
