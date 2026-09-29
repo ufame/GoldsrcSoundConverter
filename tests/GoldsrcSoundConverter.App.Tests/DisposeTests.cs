@@ -87,6 +87,7 @@ public sealed class DisposeTests : IDisposable
       _log,
       outputDirectory);
     var playback = new PlaybackViewModel(queueVm, conversion, new PlaybackCoordinator(_playback, _log));
+    var presets = new PresetViewModel(conversion, new PresetCatalog());
     return new MainViewModel(
       _settings,
       _filePicker,
@@ -94,7 +95,7 @@ public sealed class DisposeTests : IDisposable
       queueVm,
       conversion,
       playback,
-      new PresetCatalog(),
+      presets,
       _log,
       outputDirectory);
   }

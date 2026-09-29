@@ -15,11 +15,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
   private readonly ISettingsStore _settingsStore;
   private readonly IFilePicker _filePicker;
   private readonly IFolderLauncher _folderLauncher;
-  private readonly IPresetCatalog _presetCatalog;
   private readonly ILogBuffer _log;
   private readonly OutputDirectoryProvider _outputDirectoryProvider;
-
-  private bool _applyingPreset;
 
   public MainViewModel(
     ISettingsStore settingsStore,
@@ -28,7 +25,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     QueueViewModel queue,
     ConversionViewModel conversion,
     PlaybackViewModel playback,
-    IPresetCatalog presetCatalog,
+    PresetViewModel presets,
     ILogBuffer log,
     OutputDirectoryProvider outputDirectoryProvider)
   {
@@ -38,14 +35,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     Queue = queue;
     Conversion = conversion;
     Playback = playback;
-    _presetCatalog = presetCatalog;
+    Presets = presets;
     _log = log;
     _outputDirectoryProvider = outputDirectoryProvider;
 
     Queue.StatusChanged += OnQueueStatusChanged;
     Conversion.StatusChanged += OnConversionStatusChanged;
-    Conversion.FormatChanged += OnConversionFormatChanged;
-    Conversion.OptionsChanged += OnConversionOptionsChanged;
     Conversion.RunFinished += OnConversionRunFinished;
     Playback.StatusChanged += OnPlaybackStatusChanged;
 
@@ -65,14 +60,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
   public ObservableCollection<string> LogEntries => _log.Entries;
 
-  public ObservableCollection<Cs16Preset> Presets { get; } = new();
+  public PresetViewModel Presets { get; }
 
   public double InitialWindowWidth { get; }
 
   public double InitialWindowHeight { get; }
-
-  [ObservableProperty]
-  private Cs16Preset? _selectedPreset;
 
   [ObservableProperty]
   private string _outputDirectory = string.Empty;
@@ -84,8 +76,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
   {
     Queue.StatusChanged -= OnQueueStatusChanged;
     Conversion.StatusChanged -= OnConversionStatusChanged;
-    Conversion.FormatChanged -= OnConversionFormatChanged;
-    Conversion.OptionsChanged -= OnConversionOptionsChanged;
     Conversion.RunFinished -= OnConversionRunFinished;
     Playback.StatusChanged -= OnPlaybackStatusChanged;
     GC.SuppressFinalize(this);
@@ -132,52 +122,36 @@ public partial class MainViewModel : ObservableObject, IDisposable
     StatusText = "Настройки сохранены";
   }
 
-  private void RefreshPresets()
-  {
-    _applyingPreset = true;
-    Presets.Clear();
-    foreach (var preset in _presetCatalog.ForFormat(Conversion.Format))
-    {
-      Presets.Add(preset);
-    }
-
-    SelectedPreset = _presetCatalog.Resolve(Conversion.BuildOptions());
-    _applyingPreset = false;
-  }
-
-  private void EnsureCustomPreset()
-  {
-    _applyingPreset = true;
-    SelectedPreset = _presetCatalog.Resolve(Conversion.BuildOptions());
-    _applyingPreset = false;
-  }
-
   private void ApplySettings(AppSettings settings)
   {
-    _applyingPreset = true;
-    Conversion.Format = settings.Format;
-    Conversion.SampleRate = settings.SampleRate;
-    Conversion.Channels = settings.Channels;
-    Conversion.BitDepth = settings.BitDepth;
-    Conversion.Mp3BitrateKbps = settings.Mp3BitrateKbps;
-    Conversion.NormalizePeak = settings.NormalizePeak;
-    Conversion.AsciiNames = settings.AsciiNames;
-    Conversion.LowercaseNames = settings.LowercaseNames;
-    Conversion.PreserveStructure = settings.PreserveStructure;
-    Conversion.CollisionPolicy = settings.CollisionPolicy;
-    Conversion.Parallelism = settings.Parallelism;
-    Conversion.FfmpegCustomPath = settings.FfmpegCustomPath;
-    OutputDirectory = settings.OutputDirectory;
-    _applyingPreset = false;
-
-    if (string.IsNullOrWhiteSpace(OutputDirectory))
+    Presets.BeginBatch();
+    try
     {
-      OutputDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-        "GoldsrcSoundConverter");
-    }
+      Conversion.Format = settings.Format;
+      Conversion.SampleRate = settings.SampleRate;
+      Conversion.Channels = settings.Channels;
+      Conversion.BitDepth = settings.BitDepth;
+      Conversion.Mp3BitrateKbps = settings.Mp3BitrateKbps;
+      Conversion.NormalizePeak = settings.NormalizePeak;
+      Conversion.AsciiNames = settings.AsciiNames;
+      Conversion.LowercaseNames = settings.LowercaseNames;
+      Conversion.PreserveStructure = settings.PreserveStructure;
+      Conversion.CollisionPolicy = settings.CollisionPolicy;
+      Conversion.Parallelism = settings.Parallelism;
+      Conversion.FfmpegCustomPath = settings.FfmpegCustomPath;
+      OutputDirectory = settings.OutputDirectory;
 
-    RefreshPresets();
+      if (string.IsNullOrWhiteSpace(OutputDirectory))
+      {
+        OutputDirectory = Path.Combine(
+          Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+          "GoldsrcSoundConverter");
+      }
+    }
+    finally
+    {
+      Presets.EndBatch();
+    }
   }
 
   private void SaveSettingsCore(double? windowWidth, double? windowHeight)
@@ -189,7 +163,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         FfmpegCustomPath = Conversion.FfmpegCustomPath,
         OutputDirectory = OutputDirectory,
         Format = Conversion.Format,
-        PresetId = SelectedPreset?.Id ?? Cs16Presets.CustomId,
+        PresetId = Presets.SelectedItem?.Id ?? Cs16Presets.CustomId,
         SampleRate = Conversion.SampleRate,
         Channels = Conversion.Channels,
         BitDepth = Conversion.BitDepth,
@@ -240,40 +214,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     StatusText = message;
   }
 
-  private void OnConversionFormatChanged(object? sender, EventArgs e)
-  {
-    if (!_applyingPreset)
-    {
-      RefreshPresets();
-    }
-  }
-
-  private void OnConversionOptionsChanged(object? sender, EventArgs e)
-  {
-    if (!_applyingPreset)
-    {
-      EnsureCustomPreset();
-    }
-  }
-
   private void OnConversionRunFinished(object? sender, EventArgs e)
   {
     SaveSettingsCore(null, null);
-  }
-
-  partial void OnSelectedPresetChanged(Cs16Preset? value)
-  {
-    if (_applyingPreset || value is null)
-    {
-      return;
-    }
-
-    _applyingPreset = true;
-    Conversion.SampleRate = value.SampleRate;
-    Conversion.Channels = value.Channels;
-    Conversion.BitDepth = value.BitDepth;
-    Conversion.Mp3BitrateKbps = value.Mp3BitrateKbps;
-    _applyingPreset = false;
   }
 
   partial void OnOutputDirectoryChanged(string value)

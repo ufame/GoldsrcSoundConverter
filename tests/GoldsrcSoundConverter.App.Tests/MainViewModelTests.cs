@@ -107,44 +107,20 @@ public sealed class MainViewModelTests : IDisposable
   }
 
   [Fact]
-  public void PresetListMatchesFormatAndResolvesSelection()
+  public void LoadedSettingsAreAppliedToConversion()
   {
+    _settings.Settings.Format = Core.Models.OutputAudioFormat.Mp3;
+    _settings.Settings.SampleRate = 44100;
+    _settings.Settings.Channels = Core.Models.TargetChannels.Stereo;
+    _settings.Settings.Mp3BitrateKbps = 192;
+
     var vm = CreateViewModel();
 
-    Assert.NotEmpty(vm.Presets);
-    Assert.NotNull(vm.SelectedPreset);
-
-    vm.Conversion.Format = Core.Models.OutputAudioFormat.Mp3;
-
-    Assert.All(
-      vm.Presets.Where(preset => !preset.IsCustom),
-      preset => Assert.Equal(Core.Models.OutputAudioFormat.Mp3, preset.Format));
-    Assert.Contains(vm.Presets, preset => preset.IsCustom);
-    Assert.NotNull(vm.SelectedPreset);
-  }
-
-  [Fact]
-  public void ApplyingPresetUpdatesConversionOptions()
-  {
-    var vm = CreateViewModel();
-    var preset = vm.Presets.First(p => p.SampleRate != vm.Conversion.SampleRate);
-
-    vm.SelectedPreset = preset;
-
-    Assert.Equal(preset.SampleRate, vm.Conversion.SampleRate);
-    Assert.Equal(preset.Channels, vm.Conversion.Channels);
-    Assert.Equal(preset.BitDepth, vm.Conversion.BitDepth);
-    Assert.Equal(preset.Mp3BitrateKbps, vm.Conversion.Mp3BitrateKbps);
-  }
-
-  [Fact]
-  public void EditingConversionOptionsSelectsCustomPreset()
-  {
-    var vm = CreateViewModel();
-
-    vm.Conversion.SampleRate = vm.Conversion.SampleRate == 44100 ? 22050 : 44100;
-
-    Assert.Equal(Core.Models.Cs16Presets.CustomId, vm.SelectedPreset?.Id);
+    Assert.Equal(Core.Models.OutputAudioFormat.Mp3, vm.Conversion.Format);
+    Assert.Equal(44100, vm.Conversion.SampleRate);
+    Assert.Equal(Core.Models.TargetChannels.Stereo, vm.Conversion.Channels);
+    Assert.Equal(192, vm.Conversion.Mp3BitrateKbps);
+    Assert.Equal("mp3-music-hq", vm.Presets.SelectedItem!.Id);
   }
 
   [Fact]
@@ -178,6 +154,7 @@ public sealed class MainViewModelTests : IDisposable
       _log,
       outputDirectory);
     var playback = new PlaybackViewModel(queueVm, conversion, new PlaybackCoordinator(_playback, _log));
+    var presets = new PresetViewModel(conversion, new PresetCatalog());
     return new MainViewModel(
       _settings,
       _filePicker,
@@ -185,7 +162,7 @@ public sealed class MainViewModelTests : IDisposable
       queueVm,
       conversion,
       playback,
-      new PresetCatalog(),
+      presets,
       _log,
       outputDirectory);
   }
