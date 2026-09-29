@@ -10,8 +10,8 @@ public sealed class QueueManager : IQueueManager
 {
   private readonly IConversionService _conversion;
   private readonly ILogBuffer _log;
+  private readonly Dictionary<Guid, CancellationTokenSource> _probeTokens = new();
 
-  private CancellationTokenSource _probeCts = new();
   private bool _disposed;
 
   public QueueManager(IConversionService conversion, ILogBuffer log)
@@ -39,8 +39,10 @@ public sealed class QueueManager : IQueueManager
       }
 
       var item = new QueueItemViewModel(candidate.FilePath, candidate.SourceRoot);
+      var probeToken = new CancellationTokenSource();
+      _probeTokens[item.Id] = probeToken;
       Items.Add(item);
-      _ = ProbeItemAsync(item, _probeCts.Token);
+      _ = ProbeItemAsync(item, probeToken);
       added++;
     }
 
@@ -49,6 +51,12 @@ public sealed class QueueManager : IQueueManager
 
   public void Remove(QueueItemViewModel item)
   {
+    if (_probeTokens.Remove(item.Id, out var probeToken))
+    {
+      probeToken.Cancel();
+      probeToken.Dispose();
+    }
+
     Items.Remove(item);
   }
 
@@ -79,34 +87,38 @@ public sealed class QueueManager : IQueueManager
 
     CancelPendingProbes();
     _disposed = true;
-    _probeCts.Dispose();
     GC.SuppressFinalize(this);
   }
 
   private void CancelPendingProbes()
   {
-    var previous = _probeCts;
-    _probeCts = new CancellationTokenSource();
-    previous.Cancel();
-    previous.Dispose();
+    foreach (var probeToken in _probeTokens.Values)
+    {
+      probeToken.Cancel();
+      probeToken.Dispose();
+    }
+
+    _probeTokens.Clear();
   }
 
   private async Task ProbeItemAsync(
     QueueItemViewModel item,
-    CancellationToken cancellationToken)
+    CancellationTokenSource probeToken)
   {
     if (item.Info is not null)
     {
+      _probeTokens.Remove(item.Id);
+      probeToken.Dispose();
       return;
     }
 
     try
     {
       var result = await _conversion
-        .TryProbeAsync(item.Id, item.SourcePath, cancellationToken)
+        .TryProbeAsync(item.Id, item.SourcePath, probeToken.Token)
         .ConfigureAwait(true);
 
-      if (result is null || cancellationToken.IsCancellationRequested || !Items.Contains(item))
+      if (result is null || !Items.Contains(item))
       {
         return;
       }
@@ -119,10 +131,15 @@ public sealed class QueueManager : IQueueManager
     }
     catch (Exception ex)
     {
-      if (!cancellationToken.IsCancellationRequested)
+      if (!probeToken.IsCancellationRequested)
       {
         _log.Add($"Не удалось проанализировать {item.FileName}: {ex.Message}");
       }
+    }
+    finally
+    {
+      _probeTokens.Remove(item.Id);
+      probeToken.Dispose();
     }
   }
 }

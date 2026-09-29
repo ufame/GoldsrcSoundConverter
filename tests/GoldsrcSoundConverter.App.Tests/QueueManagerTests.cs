@@ -124,7 +124,7 @@ public sealed class QueueManagerTests : IDisposable
   }
 
   [Fact]
-  public async Task ProbeResultIsDiscardedWhenItemRemovedBeforeCompletion()
+  public async Task RemovingItemCancelsItsPendingProbe()
   {
     _conversion.ProbeGate = new TaskCompletionSource();
     using var manager = CreateManager();
@@ -132,12 +132,31 @@ public sealed class QueueManagerTests : IDisposable
     var item = manager.Items[0];
 
     manager.Remove(item);
-    _conversion.ProbeGate.SetResult();
 
-    await WaitUntil(() => _conversion.ProbeCompleted >= 1);
+    await WaitUntil(() => _conversion.ProbeCancellations >= 1);
+    _conversion.ProbeGate.SetResult();
     await Task.Delay(50);
 
     Assert.Null(item.Info);
+  }
+
+  [Fact]
+  public async Task RemovingOneItemKeepsOtherProbesRunning()
+  {
+    _conversion.ProbeGate = new TaskCompletionSource();
+    using var manager = CreateManager();
+    manager.Add(new[] { CreateFile("a.wav"), CreateFile("b.wav") });
+    var removed = manager.Items[0];
+    var kept = manager.Items[1];
+
+    manager.Remove(removed);
+    await WaitUntil(() => _conversion.ProbeCancellations >= 1);
+
+    _conversion.ProbeGate.SetResult();
+    await WaitUntil(() => kept.Info is not null);
+
+    Assert.Null(removed.Info);
+    Assert.True(_conversion.ProbeCancellations >= 1);
   }
 
   [Fact]
