@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:GoldsrcSoundConverter.App.Controls"
         Title="GoldSrc Sound Converter — конвертер звуков для CS 1.6"
+        Icon="Assets/icon.ico"
         Width="1400"
         Height="900"
         MinWidth="1080"
