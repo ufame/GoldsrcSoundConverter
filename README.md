@@ -1,5 +1,7 @@
 # Goldsrc Sound Converter
 
+![Интерфейс Goldsrc Sound Converter](assets/preview.png)
+
 Утилита для Windows, которая конвертирует любые звуки и музыку в форматы,
 пригодные для воспроизведения в **Counter-Strike 1.6 / GoldSrc** (`.wav` и `.mp3`).
 
